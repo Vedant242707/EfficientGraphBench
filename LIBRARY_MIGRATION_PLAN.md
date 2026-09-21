@@ -1,0 +1,16 @@
+# v0.1.0 library migration plan
+
+Audit: the project already uses setuptools and src/efficientgraphbench, with validated datasets, model factories, profilers, external JSON runners, reports and CLI. The public package exports only a version. Reference workers, environment specifications and APPNP source currently depend on the repository directory. Setup is Windows-specific. Matrix scheduling lives in the CLI. These prevent an installed wheel working independently.
+
+1. Retain model implementations, canonical dataset validation, training and profiling methodology.
+2. Move the standalone reference worker and reproducible environment specifications into package resources; retain a compatibility launcher at runners/reference_worker.py. Bundle the unchanged, hash-verified APPNP source with its upstream license.
+3. Resolve mutable model environments through EGBENCH_HOME or a platform-specific user cache, with existing developer installations supported. Never write into site-packages.
+4. Add an environment manager with pinned checkout verification, isolated uv environments, import validation and explicit readiness metadata. Preserve separate Python 3.10 research environments. Initial lock support: Windows x86-64; other platforms receive a clear unsupported-platform error rather than an untested installation claim.
+5. Add Benchmark, ScalingBenchmark, BenchmarkResult, BenchmarkResults and HardwareProfile. Public methods reuse existing execution. DatasetBundle input is exported to portable NPZ. Dataset loading exposes named CSV files with descriptive validation errors.
+6. Extract shared matrix scheduling. Preserve comma-separated literal CLI seed IDs: --seeds 3 means seed 3, not three repetitions. API accepts a list. Skip deterministic pretraining failures; retain existing user-requested skip-after-OOM behavior with distinct skip reasons.
+7. Extend result statuses and failure stages additively; expose version and existing provenance. Failed and skipped runs remain visible. Result exports support JSON, JSONL, CSV and Markdown.
+8. Add setup, environments, report and scaling CLI entry points; retain scale and all current commands. Detailed model inspection stays truthful about Graphormer.
+9. Keep torch/PyG in core because the existing controller, datasets and profiling require them. Research dependencies remain outside core. Move optional Excel/PDF dependencies to a tables extra after checking lazy imports; avoid unnecessary module restructuring.
+10. Add README, changelog, license notice, initial docs, examples and complete PYTHON_COMMANDS.md. No publication or unsupported research claims.
+11. Test API, CLI, scheduling, environment lookup, installed resources and validation with small fixtures. Build a wheel and install in a separate test environment, run outside the checkout, verify CPU baseline and existing isolated-reference execution. No expensive GPU matrix required in normal unit tests.
+12. Risks: repository-relative paths, installed package data, existing custom formats, result replacement, distinct graph fingerprints, Python 3.10 worker compatibility, missing dependencies and CUDA variants. Validate these incrementally, preserve old imports and command syntax.

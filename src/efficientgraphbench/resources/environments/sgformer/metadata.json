@@ -1,0 +1,13 @@
+{
+  "environment": "sgformer",
+  "python": "environments/sgformer/.venv/Scripts/python.exe",
+  "repository": "external/SGFormer",
+  "repository_url": "https://github.com/qitianwu/SGFormer",
+  "commit": "3578e101c701491ce068bf26a9b029d2134903be",
+  "validated": true,
+  "architecture_modified": false,
+  "paper": "SGFormer: Simplifying and Empowering Transformers for Large-Graph Representations (NeurIPS 2023)",
+  "recipe": "medium/run.sh",
+  "notes": "Authors medium/ours.py and models.GCN; preserves actual parser flag semantics",
+  "validation": "Cora CUDA reference worker smoke completed successfully"
+}

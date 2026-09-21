@@ -1,0 +1,8 @@
+{
+  "environment": "graphormer",
+  "repository_url": "https://github.com/microsoft/Graphormer",
+  "commit": null,
+  "validated": false,
+  "status": "UNSUPPORTED_TASK",
+  "reason": "No validated official adapter for continuous-feature transductive node classification. Molecular input encoders and graph-level task pipeline differ. No substitute architecture will be used."
+}

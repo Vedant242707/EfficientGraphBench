@@ -1,0 +1,8 @@
+name: pyg
+dependencies:
+  - python=3.11
+  - pip
+  - pip:
+      - torch==2.14.0+cu130
+      - torch-geometric==2.8.0.post1
+# Existing controller environment; full lock is requirements-gpu-lock.txt at root.

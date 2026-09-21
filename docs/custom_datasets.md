@@ -1,0 +1,3 @@
+# Custom datasets
+
+Use `load_dataset("custom", nodes="nodes.csv", edges="edges.csv")`. Nodes require unique nonempty node_id, numeric feature_* columns, label and split. Splits must be disjoint and nonempty for train/val/test; train must contain every class. Edges require source/target referencing existing node IDs. Additional edge columns must be finite numeric attributes; individual models may ignore them. InvalidDatasetError includes validation detail. Existing `egbench prepare` can map original columns first. `load_dataset("custom", dataset_path="folder-or-graph.npz")` uses the same internal validators.

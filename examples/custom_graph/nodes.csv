@@ -1,0 +1,13 @@
+node_id,label,split,feature_1,feature_2,feature_3
+n0,group-a,train,1.0,0.0,0.1
+n1,group-a,train,0.9,0.1,0.2
+n2,group-a,train,0.8,0.1,0.1
+n3,group-a,train,0.9,0.0,0.2
+n4,group-b,train,0.0,1.0,0.1
+n5,group-b,train,0.1,0.9,0.2
+n6,group-b,train,0.1,0.8,0.1
+n7,group-b,train,0.0,0.9,0.2
+n8,group-a,val,0.9,0.0,0.1
+n9,group-b,val,0.0,0.9,0.1
+n10,group-a,test,0.8,0.0,0.2
+n11,group-b,test,0.0,0.8,0.2

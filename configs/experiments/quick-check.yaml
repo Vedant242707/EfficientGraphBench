@@ -1,0 +1,11 @@
+# Two epochs validate execution; these are not research accuracy results.
+dataset: cora
+training:
+  epochs: 2
+  lr: 0.01
+  weight_decay: 0.0005
+  latency_warmup: 1
+  latency_repeats: 3
+device: cpu
+threads: 4
+output_dir: experiments/quick-check

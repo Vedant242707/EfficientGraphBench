@@ -1,0 +1,4 @@
+name: graphormer
+# Specification intentionally not installable: task compatibility gate is closed.
+# No reference environment or measured reference result is claimed.
+dependencies: []

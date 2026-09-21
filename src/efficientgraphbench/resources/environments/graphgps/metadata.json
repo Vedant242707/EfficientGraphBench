@@ -1,0 +1,13 @@
+{
+  "environment": "graphgps",
+  "python": "environments/graphgps/.venv/Scripts/python.exe",
+  "repository": "external/GraphGPS",
+  "repository_url": "https://github.com/rampasek/GraphGPS",
+  "commit": "28015707cbab7f8ad72bed0ee872d068ea59c94b",
+  "validated": true,
+  "architecture_modified": false,
+  "paper": "Recipe for a General, Powerful, Scalable Graph Transformer (NeurIPS 2022)",
+  "recipe": "configs/GPS/actor-GPS.yaml",
+  "notes": "Official node-classification recipe applied to canonical data; not a tuned Cora paper reproduction",
+  "validation": "Cora CUDA reference worker smoke completed successfully"
+}

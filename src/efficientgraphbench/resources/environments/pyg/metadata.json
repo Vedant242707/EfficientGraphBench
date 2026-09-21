@@ -1,0 +1,16 @@
+{
+  "environment": "pyg",
+  "python": ".venv/Scripts/python.exe",
+  "repository_url": "https://github.com/pyg-team/pytorch_geometric",
+  "source_type": "library",
+  "package": "torch-geometric",
+  "package_version": "2.8.0.post1",
+  "reference_models": {
+    "appnp": {
+      "repository": "external/PyG",
+      "commit": "79d33965a40b7fa83616a9f598a0f8619f25d939",
+      "source": "benchmark/citation/appnp.py",
+      "normalized_text_sha256": "7025ef5f94c9e50beed6aef89870c0d534f02104bece23f6713edc86a231caf4"
+    }
+  }
+}
