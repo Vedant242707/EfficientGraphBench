@@ -1,4 +1,4 @@
-# Run EfficientGraphBench on a friend's laptop
+# Run EfficientGraphBench on your laptop
 
 Use these steps in order. Start with CPU; GPU setup is optional.
 
