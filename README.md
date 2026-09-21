@@ -22,7 +22,7 @@ The package has not been published to PyPI. `pip install efficientgraphbench` is
 
 Core dependencies include PyTorch and PyTorch Geometric. Install the PyTorch build appropriate for your CPU/CUDA system. Extras: `[tables]` for Excel/PDF tables, `[ogb]` for OGB datasets, `[setup]` for uv, `[dev]` for tests/build tools. Research model stacks are installed separately.
 
-New computer or notebook? Follow [FRIENDS_NOTEBOOK_SETUP.md](FRIENDS_NOTEBOOK_SETUP.md).
+New computer or notebook? Follow [YOUR_NOTEBOOK_SETUP.md](YOUR_NOTEBOOK_SETUP.md).
 
 ## Quick start
 
