@@ -22,7 +22,7 @@ SOURCE = RESOURCES / "vendor/appnp.py"
 
 def build_reference_appnp(config, in_channels, out_channels):
     if not SOURCE.exists():
-        raise ImportError("Missing pinned PyG APPNP source; run python scripts/setup_appnp.py")
+        raise ImportError("Missing bundled PyG APPNP source; reinstall EfficientGraphBench")
     if hashlib.sha256(SOURCE.read_text(encoding="utf-8").encode()).hexdigest() != SOURCE_SHA256:
         raise ImportError("PyG APPNP source differs from the verified reference snapshot")
     tree = ast.parse(SOURCE.read_text(encoding="utf-8"), filename=str(SOURCE))

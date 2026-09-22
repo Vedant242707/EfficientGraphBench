@@ -59,7 +59,7 @@ result = Benchmark.run_model(model="gcn", dataset="cora")
 print(result.status, result.accuracy, result.training_time)
 ```
 
-Complete Python and CLI reference: [PYTHON_COMMANDS.md](PYTHON_COMMANDS.md).
+Notebook recipes: [PYTHON_COMMANDS.md](PYTHON_COMMANDS.md). Full Python and CLI reference: [PYTHON_API_REFERENCE.md](PYTHON_API_REFERENCE.md).
 
 ## Reference environments
 
@@ -128,6 +128,6 @@ python -m pytest -q
 python -m build
 ```
 
-See [docs/getting_started.md](docs/getting_started.md), [LIBRARY_MIGRATION_PLAN.md](LIBRARY_MIGRATION_PLAN.md), and [CHANGELOG.md](CHANGELOG.md).
+See [docs/getting_started.md](docs/getting_started.md), [docs/architecture.md](docs/architecture.md), and [CHANGELOG.md](CHANGELOG.md).
 
-Historical validation documents refer to local benchmark artifacts. Those generated results, personal notebooks and datasets are excluded from this source repository; run the documented commands to generate results on your own machine.
+Generated results, personal notebooks, datasets and development notes are excluded from this source repository. Run the documented commands to generate results on your own machine.

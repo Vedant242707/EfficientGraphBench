@@ -29,3 +29,6 @@ dist/
 .env.*
 *.pem
 *.key
+
+# Local development notes archived during repository cleanup
+/.repo-archive/
