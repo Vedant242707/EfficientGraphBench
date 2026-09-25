@@ -222,3 +222,5 @@ Reference setup currently supports Windows x86-64.
 ## Full reference
 
 Need advanced settings, provenance, JSONL exports, or terminal commands? Open [PYTHON_API_REFERENCE.md](PYTHON_API_REFERENCE.md). It contains the complete reference; this guide covers everyday notebook use.
+
+Linux update: GraphGPS now has a Linux x86-64 installation path; see [GraphGPS on Linux](docs/graphgps_linux.md). It requires verification on the target server. SGFormer automatic setup remains Windows-only.

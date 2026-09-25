@@ -180,3 +180,25 @@ def test_windows_hardware_identity_ignores_python_marketing_label(monkeypatch):
         identity.sys, "getwindowsversion", lambda: SimpleNamespace(major=10, minor=0, build=99999)
     )
     assert identity.physical_hardware("cpu")[1] != second
+
+
+@pytest.mark.parametrize(
+    "system,machine,model,allowed",
+    [
+        ("Linux", "x86_64", "graphgps", True),
+        ("Windows", "AMD64", "graphgps", True),
+        ("Linux", "x86_64", "sgformer", False),
+        ("Linux", "aarch64", "graphgps", False),
+        ("Darwin", "x86_64", "graphgps", False),
+    ],
+)
+def test_reference_setup_platforms(monkeypatch, system, machine, model, allowed):
+    from efficientgraphbench.environments import manager
+
+    monkeypatch.setattr(manager.platform, "system", lambda: system)
+    monkeypatch.setattr(manager.platform, "machine", lambda: machine)
+    if allowed:
+        assert manager.check_setup_platform(model) == system
+    else:
+        with pytest.raises(ValueError):
+            manager.check_setup_platform(model)

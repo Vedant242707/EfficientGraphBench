@@ -12,6 +12,15 @@ from efficientgraphbench.paths import RESOURCES, environment_dir, home
 NAMES = ("graphgps", "sgformer", "graphormer")
 
 
+def check_setup_platform(name):
+    system = platform.system()
+    if platform.machine().lower() not in {"amd64", "x86_64"}:
+        raise ValueError("Reference setup currently requires x86-64")
+    if system == "Windows" or (system == "Linux" and name == "graphgps"):
+        return system
+    raise ValueError("Reference setup supports Windows x86-64; GraphGPS also supports Linux x86-64")
+
+
 def environment_spec(name):
     name = name.lower().replace("sgformer_reference", "sgformer")
     if name not in NAMES:
@@ -85,10 +94,7 @@ def setup_environment(name):
     if Path(spec["python"]).exists() and Path(spec["repository"]).exists():
         result = inspect_environment(name, verify=True)
     else:
-        if platform.system() != "Windows" or platform.machine().lower() not in {"amd64", "x86_64"}:
-            raise ValueError(
-                "The bundled research locks currently support Windows x86-64 only. Core PyG models remain available."  # noqa: E501
-            )
+        system = check_setup_platform(name)
         uv, git = shutil.which("uv"), shutil.which("git")
         if not uv or not git:
             raise RuntimeError(
@@ -111,6 +117,8 @@ def setup_environment(name):
                 raise ValueError(
                     "Existing repository is not at the pinned commit; it has been preserved"
                 )
+        # Let uv provision the worker's Python without changing system Python.
+        subprocess.run([uv, "python", "install", "3.10.20"], check=True)
         subprocess.run([uv, "venv", str(folder / ".venv"), "--python", "3.10.20"], check=True)
         lock = RESOURCES / "environments" / name / "requirements-lock.txt"
         subprocess.run(
@@ -134,6 +142,7 @@ def setup_environment(name):
         for filename in ("requirements-lock.txt", "environment.yml"):
             shutil.copyfile(RESOURCES / "environments" / name / filename, folder / filename)
         spec["validated"] = False
+        spec["setup_platform"] = system
         (folder / "metadata.json").write_text(json.dumps(spec, indent=2), encoding="utf-8")
         result = inspect_environment(name, verify=True)
     result["validation"] = (

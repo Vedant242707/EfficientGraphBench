@@ -120,3 +120,5 @@ Results are relative to the notebook's working directory. Your friend's hardware
 - PYTHON_API_REFERENCE.md: all options and terminal commands.
 - Copy custom node/edge CSV files separately; personal datasets are not in GitHub.
 - Downloaded models, virtual environments, local notebooks and historical benchmark outputs are intentionally not shipped in this repository.
+
+Linux update: GraphGPS now has a Linux x86-64 installation path; see [GraphGPS on Linux](docs/graphgps_linux.md). It requires verification on the target server. SGFormer automatic setup remains Windows-only.

@@ -131,3 +131,5 @@ python -m build
 See [docs/getting_started.md](docs/getting_started.md), [docs/architecture.md](docs/architecture.md), and [CHANGELOG.md](CHANGELOG.md).
 
 Generated results, personal notebooks, datasets and development notes are excluded from this source repository. Run the documented commands to generate results on your own machine.
+
+Linux update: GraphGPS now has a Linux x86-64 installation path; see [GraphGPS on Linux](docs/graphgps_linux.md). It requires verification on the target server. SGFormer automatic setup remains Windows-only.

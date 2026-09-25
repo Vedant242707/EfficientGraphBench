@@ -507,3 +507,5 @@ Create a searchable HTML data sheet; open the saved file in your browser.
 python -m pytest -q
 python -m build
 ```
+
+Linux update: GraphGPS now has a Linux x86-64 installation path; see [GraphGPS on Linux](docs/graphgps_linux.md). It requires verification on the target server. SGFormer automatic setup remains Windows-only.
