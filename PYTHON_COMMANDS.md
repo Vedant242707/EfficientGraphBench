@@ -2,6 +2,8 @@
 
 **Already installed? Start at Step 1. You do not need to run every example in this file.**
 
+**College GPU / professor's experiments:** see [the short college guide](docs/college_experiments.md). Use `runs=10` or `runs=20` instead of `seeds=[...]`; use `splits="official"` to cycle heterophilous folds or `splits="random"` for new 60/20/20 splits.
+
 Choose the notebook kernel **EfficientGraphBench (CUDA GPU)**.
 
 ## 1. Import the library
@@ -34,7 +36,7 @@ results = Benchmark(
 | `epochs` | Maximum training rounds per run | `200` for a benchmark; `2` for a quick check |
 | `seeds` | Repeated runs with different random starts | `[1, 2, 3]` runs each model three times; `[42]` runs once |
 
-`"all"` includes the primary models, not experimental variants. Official Graphormer will show `UNSUPPORTED_TASK` for this task; other models continue. GraphGPS and SGFormer require their separate environments to be installed.
+`"all"` includes the primary models, with optional PyG SGFormer available by explicit ID. Official Graphormer will show `UNSUPPORTED_TASK` for this task; other models continue. GraphGPS and SGFormer require their separate environments to be installed.
 
 ## 3. See the results
 

@@ -19,10 +19,7 @@ def generate_provenance(output=None):
     old = json.loads(previous_path.read_text(encoding="utf-8")) if previous_path.exists() else []
     previous = {r.get("model_id"): r for r in old}
     alias = {
-        "graphgps_adapted": "graphgps",
-        "graphormer_adapted": "graphormer",
         "sgformer_pyg": "sgformer",
-        "appnp_adapted": "appnp",
     }
     measurements = []
     for path in (ROOT / "experiments").glob("reference-*/raw/results.jsonl"):
@@ -77,12 +74,15 @@ def generate_provenance(output=None):
             )
             row["architecture_modified"] = spec["source_type"] not in {"library", "official_repo"}
             row["architecture_modifications"] = row.get("exact_modifications", [])
+            if name == "mlp":
+                row.update(
+                    architecture_modifications=[],
+                    exact_modifications=[],
+                    reference_commit_version=version("torch-geometric"),
+                    implementation_modified=False,
+                )
             row["task_modifications"] = ["Full-graph node classification with canonical masks"]
-            row["preprocessing_requirements"] = (
-                ["Dense shortest paths; custom 4096-node safeguard"]
-                if name == "graphormer_adapted"
-                else ["Canonical graph tensors"]
-            )
+            row["preprocessing_requirements"] = ["Canonical graph tensors"]
             source = Path(inspect.getfile(type(underlying)))
             wrapper = Path(inspect.getfile(type(model)))
             row.update(

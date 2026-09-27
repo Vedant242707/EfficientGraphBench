@@ -59,6 +59,8 @@ Additional result properties: `model`, `model_source`, `repository_commit`, `dat
 
 ## Run a model comparison
 
+For 10–20 runs use `Benchmark(dataset="ogbn-arxiv", models=["gcn"], runs=10, device="cuda").run()`. `runs` generates seeds 1..N and cannot be combined with `seeds`. `splits="fixed"` preserves a single split (default), `splits="official"` cycles available official folds, and `splits="random"` generates stratified 60/20/20 splits per seed. Random OGB splits are nonofficial. Repeated split summaries retain hardware/configuration boundaries and include attempted runs and distinct successful splits. `summary(across_splits=False)` separates folds; `summary(across_splits=True)` explicitly aggregates compatible folds from reloaded records. See [College experiments](docs/college_experiments.md) for Python, SSH notebooks, datasets, and detailed timing/memory fields. The CLI equivalent is `egbench repeat --dataset ogbn-arxiv --runs 10`; use `egbench repeat --help` for options.
+
 ```python
 bench = Benchmark(
     dataset="cora", models=["gcn", "graphsage", "sgformer", "graphgps"],
@@ -69,7 +71,7 @@ results = bench.run()
 print(results.summary())
 ```
 
-`Benchmark(dataset="cora", models="all", seeds=(42,43,44), **options)` runs models sequentially. `models="all"` selects the primary models. An explicit list selects any registered implementations, including experimental variants. No subprocess/environment activation details are required from Python.
+`Benchmark(dataset="cora", models="all", seeds=(42,43,44), **options)` runs models sequentially. `models="all"` selects the primary models. An explicit list selects any registered implementations, including the maintained PyG SGFormer alternative. No subprocess/environment activation details are required from Python.
 
 After OOM, remaining seeds are skipped. Pretraining deterministic failures also skip remaining seeds. Skipped rows have no measured accuracy/timing. `SKIPPED_DETERMINISTIC_FAILURE` and `SKIPPED_AFTER_OOM` distinguish these policies. Other models continue.
 
@@ -171,7 +173,7 @@ print(inspect_environment("graphgps"))
 print(inspect_environment("graphgps", verify=True))
 ```
 
-Setup requires Git and uv, may download packages and creates an isolated environment. Current locks support Windows x86-64. verify=True checks the clean pinned checkout and model imports; it does not claim successful training on all graphs. `EGBENCH_HOME` overrides the cache location; set it before invoking the library. No manual activation is needed.
+Setup requires Git and uv, may download packages and creates an isolated environment. Current locks support Windows x86-64; GraphGPS also has a [Linux x86-64 setup path](docs/graphgps_linux.md), which must be verified on the target server. SGFormer automatic setup remains Windows-only. verify=True checks the clean pinned checkout and model imports; it does not claim successful training on all graphs. `EGBENCH_HOME` overrides the cache location; set it before invoking the library. No manual activation is needed.
 
 ## Reports, provenance and recommendation
 

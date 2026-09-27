@@ -1,6 +1,5 @@
 """Standalone Python 3.10 worker. Reference source is imported, never rewritten."""
 
-import hashlib
 import json
 import platform
 import random
@@ -232,7 +231,7 @@ def execute(request, result_path):
         import torch.nn.functional as F
         import torch_geometric
         from identity import physical_hardware
-        from interchange import fingerprint
+        from interchange import file_sha256, fingerprint
         from runtime import MemoryProfiler, measure_latency, synchronize
         from torch_geometric.data import Data
 
@@ -276,7 +275,7 @@ def execute(request, result_path):
             stage = "preprocessing"
             start = time.perf_counter()
             graph_path = Path(request["graph_path"])
-            if hashlib.sha256(graph_path.read_bytes()).hexdigest() != request["graph_file_sha256"]:
+            if file_sha256(graph_path) != request["graph_file_sha256"]:
                 raise ValueError("Canonical graph file was modified")
             with np.load(graph_path, allow_pickle=False) as arrays:
                 data = Data(**{key: torch.from_numpy(arrays[key].copy()) for key in arrays.files})
@@ -287,6 +286,7 @@ def execute(request, result_path):
             if fingerprint(splits) != request["split_hash"]:
                 raise ValueError("Split hash mismatch")
             data.batch = torch.zeros(data.num_nodes, dtype=torch.long)
+            profiler.mark("canonical_graph_loading_and_verification")
             # Official preprocessing occurs on CPU before transfer.
             factory = graphgps if request["model_id"] == "graphgps" else sgformer
             model, forward, optimizer, scheduler, settings = factory(request, data, device)
@@ -294,6 +294,7 @@ def execute(request, result_path):
                 del data.raw_x
             data = data.to(device)
             synchronize(device)
+            profiler.mark("model_preprocessing_initialization_and_device_transfer")
             result.update(settings)
             result["model_preprocessing_time_sec"] = time.perf_counter() - start
             result["preprocessing_time_sec"] = (
@@ -317,6 +318,8 @@ def execute(request, result_path):
             synchronize(device)
             start = time.perf_counter()
             optimization = 0.0
+            validation = 0.0
+            epoch_times = []
             for epoch in range(1, epochs + 1):
                 step_start = time.perf_counter()
                 model.train()
@@ -330,12 +333,16 @@ def execute(request, result_path):
                     torch.nn.utils.clip_grad_norm_(model.parameters(), settings["clip_grad_norm"])
                 optimizer.step()
                 synchronize(device)
-                optimization += time.perf_counter() - step_start
+                epoch_times.append(time.perf_counter() - step_start)
+                optimization += epoch_times[-1]
+                validation_start = time.perf_counter()
                 model.eval()
                 with torch.inference_mode():
                     score = (
                         (forward("val").argmax(-1) == data.y[data.val_mask]).float().mean().item()
                     )
+                synchronize(device)
+                validation += time.perf_counter() - validation_start
                 if score > best:
                     best, best_epoch = score, epoch
                     stale_epochs = 0
@@ -360,6 +367,9 @@ def execute(request, result_path):
                 training_time_sec=elapsed,
                 train_time_sec=elapsed,
                 optimization_time_sec=optimization,
+                validation_time_sec=validation,
+                epoch_times_sec=epoch_times,
+                epoch_time_sec=optimization / epoch,
                 epochs_run=epoch,
                 maximum_epochs=epochs,
                 early_stopping_patience=settings["early_stopping_patience"],
@@ -368,6 +378,8 @@ def execute(request, result_path):
                 validation_accuracy=best,
             )
             checkpoint = result_path.parent / "checkpoint.pt"
+            profiler.mark("training")
+            checkpoint_start = time.perf_counter()
             torch.save(
                 {
                     "model_state_dict": best_state,
@@ -377,12 +389,40 @@ def execute(request, result_path):
                 checkpoint,
             )
             result["checkpoint_path"] = str(checkpoint)
+            result["checkpoint_write_time_sec"] = time.perf_counter() - checkpoint_start
+            test_start = time.perf_counter()
             model.load_state_dict(best_state)
             model.eval()
             with torch.inference_mode():
                 result["accuracy"] = (
                     (forward("test").argmax(-1) == data.y[data.test_mask]).float().mean().item()
                 )
+            synchronize(device)
+            result["checkpoint_restore_and_test_time_sec"] = time.perf_counter() - test_start
+            result["parameter_memory_mib"] = (
+                sum(p.numel() * p.element_size() for p in model.parameters()) / 1024**2
+            )
+            result["gradient_memory_mib"] = (
+                sum(
+                    p.grad.numel() * p.grad.element_size()
+                    for p in model.parameters()
+                    if p.grad is not None
+                )
+                / 1024**2
+            )
+            result["optimizer_tensor_memory_mib"] = (
+                sum(
+                    v.numel() * v.element_size()
+                    for state in optimizer.state.values()
+                    for v in state.values()
+                    if torch.is_tensor(v)
+                )
+                / 1024**2
+            )
+            result["graph_tensor_memory_mib"] = (
+                sum(v.numel() * v.element_size() for _, v in data if torch.is_tensor(v)) / 1024**2
+            )
+            profiler.mark("checkpoint_and_test")
 
             class InferenceInterface(torch.nn.Module):
                 def forward(self, ignored):
@@ -401,6 +441,7 @@ def execute(request, result_path):
                 )
             )
             result.update(status="SUCCESS", failure_reason=None)
+            profiler.mark("inference_warmup_and_measurement")
     except Exception as exc:
         traceback.print_exc()
         message = f"{type(exc).__name__}: {exc}"

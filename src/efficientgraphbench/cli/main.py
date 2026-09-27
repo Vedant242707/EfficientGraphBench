@@ -598,6 +598,47 @@ def matrix(
 
 
 @app.command()
+def repeat(
+    dataset: str = "ogbn-arxiv",
+    models: str = "gcn,graphsage,gat,gatv2,appnp,sgc,mlp",
+    runs: int = 10,
+    splits: str = "fixed",
+    epochs: int = 200,
+    device: str = "cuda",
+    output_dir: str = "experiments/repeated",
+):
+    """Repeat with seeds 1..runs. Splits: fixed, official (cycle folds), or random (60/20/20)."""
+    from efficientgraphbench.api.benchmark import Benchmark
+
+    try:
+        results = Benchmark(
+            dataset=dataset,
+            models=[m.strip() for m in models.split(",")],
+            runs=runs,
+            splits=splits,
+            epochs=epochs,
+            device=device,
+            output_dir=output_dir,
+        ).run()
+        summary = results.summary()
+        summary.to_csv(Path(output_dir) / "summary.csv", index=False)
+        results.save_json(Path(output_dir) / "runs.json")
+        console.print(
+            summary[
+                ["model", "runs", "distinct_splits", "accuracy_mean", "accuracy_sd", "status"]
+            ].to_string(index=False)
+        )
+        console.print(
+            f"Detailed results: {output_dir}/runs.json; summary: {output_dir}/summary.csv"
+        )
+        if any(not is_success(r) for r in results.records):
+            raise typer.Exit(1)
+    except (ValueError, OSError) as exc:
+        console.print(f"[red]{exc}[/red]")
+        raise typer.Exit(1) from exc
+
+
+@app.command()
 def compare(dataset: str = "cora", output_dir: str = "experiments", report: bool = False):
     """Show the latest comparison table for this dataset."""
 

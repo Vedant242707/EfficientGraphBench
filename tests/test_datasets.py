@@ -45,14 +45,16 @@ def test_generated_splits_fixed_and_disjoint(tiny_graph):
 
 
 @pytest.mark.parametrize(
-    "name", [name for name in DATASETS if name not in {"custom", "ogbn-arxiv"}]
+    "name", [name for name, spec in DATASETS.items() if spec.loader not in {"custom", "ogb"}]
 )
 def test_pyg_loaders_preserve_protocols(name, tiny_graph, monkeypatch, tmp_path):
     spec = DATASETS[name]
     graph = tiny_graph.clone()
-    if spec.loader == "wikics":
+    if spec.loader in {"wikics", "heterophilous", "actor", "webkb"}:
         graph.train_mask = torch.stack([graph.train_mask, graph.train_mask], dim=1)
         graph.val_mask = torch.stack([graph.val_mask, graph.val_mask], dim=1)
+        if spec.loader != "wikics":
+            graph.test_mask = torch.stack([graph.test_mask, graph.test_mask], dim=1)
 
     class FakeDataset:
         num_classes = 2
@@ -69,6 +71,9 @@ def test_pyg_loaders_preserve_protocols(name, tiny_graph, monkeypatch, tmp_path)
         "coauthor": "Coauthor",
         "wikics": "WikiCS",
         "flickr": "Flickr",
+        "heterophilous": "HeterophilousGraphDataset",
+        "actor": "Actor",
+        "webkb": "WebKB",
     }[spec.loader]
     monkeypatch.setattr(f"efficientgraphbench.datasets.registry.{constructor}", FakeDataset)
     loaded = load_dataset(name, tmp_path, split_index=1 if spec.loader == "wikics" else 0)
@@ -78,18 +83,19 @@ def test_pyg_loaders_preserve_protocols(name, tiny_graph, monkeypatch, tmp_path)
         assert loaded.split == "stratified-per-class-60-20-20-seed0"
     else:
         assert torch.equal(loaded.data.train_mask, tiny_graph.train_mask)
-    if spec.loader in {"wikics", "flickr"}:
+    if spec.loader not in {"planetoid", "amazon", "coauthor"}:
         torch.testing.assert_close(loaded.data.x, tiny_graph.x)
     else:
         assert loaded.preprocessing == "pyg-normalize-features"
 
 
-def test_ogb_indices_and_labels(tiny_graph, monkeypatch, tmp_path):
+@pytest.mark.parametrize("name", ["ogbn-arxiv", "ogbn-products"])
+def test_ogb_indices_and_labels(name, tiny_graph, monkeypatch, tmp_path):
     class FakeOGB:
         num_classes = 2
 
         def __init__(self, **kwargs):
-            assert kwargs["name"] == "ogbn-arxiv"
+            assert kwargs["name"] == name
 
         def __getitem__(self, index):
             return {
@@ -106,14 +112,18 @@ def test_ogb_indices_and_labels(tiny_graph, monkeypatch, tmp_path):
     monkeypatch.setitem(
         sys.modules, "ogb.nodeproppred", SimpleNamespace(NodePropPredDataset=FakeOGB)
     )
-    loaded = load_dataset("ogbn-arxiv", tmp_path)
+    loaded = load_dataset(name, tmp_path)
     assert torch.equal(loaded.data.y, tiny_graph.y)
     assert torch.equal(loaded.data.val_mask, tiny_graph.val_mask)
-    assert loaded.data.is_undirected()
-    assert loaded.split == "ogb-official-time"
+    if name == "ogbn-arxiv":
+        assert loaded.data.is_undirected()
+        assert loaded.split == "ogb-official-time"
+    else:
+        assert torch.equal(loaded.data.edge_index, tiny_graph.edge_index)
+        assert loaded.split == "ogb-official-sales-rank"
 
 
-@pytest.mark.parametrize("failure", ["overlap", "empty", "nan", "edge", "labels", "missing-class"])
+@pytest.mark.parametrize("failure", ["overlap", "empty", "nan", "edge", "labels"])
 def test_invalid_graph_rejected(tiny_graph, failure):
     if failure == "overlap":
         tiny_graph.val_mask[0] = True
@@ -125,10 +135,32 @@ def test_invalid_graph_rejected(tiny_graph, failure):
         tiny_graph.edge_index[0, 0] = 50
     elif failure == "labels":
         tiny_graph.y = tiny_graph.y[:, None]
-    else:
-        tiny_graph.train_mask &= tiny_graph.y == 0
     with pytest.raises(ValueError):
         validate_graph(tiny_graph, 2)
+
+
+def test_missing_training_class_preserves_labels_and_masks(tiny_graph, monkeypatch, tmp_path):
+    graph = tiny_graph.clone()
+    graph.train_mask &= graph.y == 0
+    for key in ("train_mask", "val_mask", "test_mask"):
+        setattr(graph, key, getattr(graph, key).unsqueeze(1))
+
+    class OfficialFold:
+        num_classes = 2
+
+        def __init__(self, *args):
+            pass
+
+        def __getitem__(self, index):
+            return graph.clone()
+
+    monkeypatch.setattr("efficientgraphbench.datasets.registry.WebKB", OfficialFold)
+    loaded = load_dataset("texas", tmp_path)
+    assert loaded.num_classes == 2
+    assert torch.equal(loaded.data.train_mask, graph.train_mask[:, 0])
+    assert torch.equal(loaded.data.y, tiny_graph.y)
+    assert loaded.metadata()["missing_training_classes"] == [1]
+    assert loaded.metadata()["training_class_counts"] == [3, 0]
 
 
 def test_fingerprint_tracks_graph_and_split(tiny_graph):

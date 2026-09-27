@@ -61,6 +61,7 @@ def train(model, data, config, device, checkpoint):
             break
     synchronize(device)
     total_time = time.perf_counter() - total_start
+    checkpoint_start = time.perf_counter()
     torch.save(
         {
             "model_state_dict": best_state,
@@ -69,11 +70,28 @@ def train(model, data, config, device, checkpoint):
         },
         checkpoint,
     )
+    checkpoint_time = time.perf_counter() - checkpoint_start
+    test_start = time.perf_counter()
     model.load_state_dict(best_state)
     model.eval()
     with torch.inference_mode():
         test_score = accuracy(model(data), data.y, data.test_mask)
+    synchronize(device)
+    test_time = time.perf_counter() - test_start
     return {
+        "checkpoint_write_time_sec": checkpoint_time,
+        "checkpoint_restore_and_test_time_sec": test_time,
+        "gradient_memory_mib": sum(
+            p.grad.numel() * p.grad.element_size() for p in model.parameters() if p.grad is not None
+        )
+        / 1024**2,
+        "optimizer_tensor_memory_mib": sum(
+            v.numel() * v.element_size()
+            for state in optimizer.state.values()
+            for v in state.values()
+            if torch.is_tensor(v)
+        )
+        / 1024**2,
         "training_time_sec": total_time,
         "epochs_run": epoch,
         "maximum_epochs": config.epochs,

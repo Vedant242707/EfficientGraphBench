@@ -43,6 +43,18 @@ def run_matrix(jobs, execute=None):
                 "checkpoint_path",
                 "worker_wall_time_sec",
                 "elapsed_until_failure_sec",
+                "phase_times_sec",
+                "memory_snapshots",
+                "parameter_memory_mib",
+                "gradient_memory_mib",
+                "optimizer_tensor_memory_mib",
+                "graph_tensor_memory_mib",
+                "checkpoint_write_time_sec",
+                "checkpoint_restore_and_test_time_sec",
+                "optimization_time_sec",
+                "validation_time_sec",
+                "epoch_times_sec",
+                "epoch_time_sec",
             ):
                 result.pop(key, None)
             result.update(
@@ -54,6 +66,20 @@ def run_matrix(jobs, execute=None):
                 skipped_after_run_id=cause["run_id"],
                 measured=False,
             )
+            if any(
+                config.to_dict().get(k) != cause.get("config", {}).get(k)
+                for k in ("split_mode", "split_seed", "split_index")
+            ):
+                for key in (
+                    "split_hash",
+                    "split",
+                    "canonical_graph_hash",
+                    "dataset_fingerprint",
+                    "graph_path",
+                    "split_path",
+                    "graph_file_sha256",
+                ):
+                    result.pop(key, None)
             write_result(result, config.output_dir)
         else:
             result = execute(config)

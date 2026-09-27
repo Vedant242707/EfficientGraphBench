@@ -6,7 +6,7 @@ from pathlib import Path
 
 import yaml
 
-from efficientgraphbench.datasets.catalog import DATASETS, canonical_dataset
+from efficientgraphbench.datasets.catalog import DATASETS, OFFICIAL_SPLIT_COUNTS, canonical_dataset
 from efficientgraphbench.names import MODEL_NAMES
 
 
@@ -46,6 +46,7 @@ class BenchmarkConfig:
     dataset_path: str | None = None
     split_seed: int = 0
     split_index: int = 0
+    split_mode: str = "official"
     model_options: dict = field(default_factory=dict)
     worker_timeout_sec: int = 7200
 
@@ -152,17 +153,19 @@ class BenchmarkConfig:
             raise ValueError("--dataset-path is only used with --dataset custom")
         if not 0 <= self.split_seed < 2**32 or not 0 <= self.split_index < 20:
             raise ValueError("split_seed must be in [0, 2**32); split_index must be in [0, 20)")
-        if self.dataset != "wikics" and self.split_index != 0:
-            raise ValueError("split_index applies only to WikiCS")
+        if self.split_mode not in {"official", "random"}:
+            raise ValueError("split_mode must be official or random")
+        if self.split_index >= OFFICIAL_SPLIT_COUNTS.get(self.dataset, 1):
+            raise ValueError("split_index exceeds the available official splits for this dataset")
+        if self.split_mode == "random" and self.split_index:
+            raise ValueError("split_index cannot be combined with random splits")
         if self.model.name not in MODEL_NAMES:
             raise ValueError(f"model must be one of: {', '.join(MODEL_NAMES.values())}")
         if self.device not in {"auto", "cpu", "cuda"}:
             raise ValueError("device must be auto, cpu, or cuda")
         m, t = self.model, self.training
         if m.name == "appnp" and m.num_layers != 2:
-            raise ValueError(
-                "Reference APPNP has two feature layers; use appnp_adapted for other depths"
-            )
+            raise ValueError("Reference APPNP requires two feature layers")
         if t.optimizer not in {"Adam", "AdamW", "SGD"} or t.scheduler not in {None, "cosine"}:
             raise ValueError("optimizer must be Adam/AdamW/SGD; scheduler must be null/cosine")
         if t.early_stopping_patience is not None and (
@@ -171,10 +174,7 @@ class BenchmarkConfig:
             raise ValueError("early_stopping_patience must be null or a positive integer")
         if m.hidden_dim < 1 or m.num_layers < 2 or m.heads < 1:
             raise ValueError("hidden_dim/heads must be positive and num_layers >= 2")
-        if (
-            m.name in {"gat", "gatv2", "graphormer_adapted", "graphgps_adapted"}
-            and m.hidden_dim % m.heads
-        ):
+        if m.name in {"gat", "gatv2"} and m.hidden_dim % m.heads:
             raise ValueError("Attention model hidden_dim must be divisible by heads")
         if m.propagation_steps < 1 or not 0 < m.alpha <= 1:
             raise ValueError("propagation_steps must be positive and alpha in (0, 1]")

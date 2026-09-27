@@ -48,6 +48,8 @@ Additional result properties: `model`, `model_source`, `repository_commit`, `dat
 
 ## Run a model comparison
 
+For 10–20 runs use `Benchmark(dataset="ogbn-arxiv", models=["gcn"], runs=10, device="cuda").run()`. `runs` generates seeds 1..N and cannot be combined with `seeds`. `splits="fixed"` preserves a single split (default), `splits="official"` cycles available official folds, and `splits="random"` generates stratified 60/20/20 splits per seed. Random OGB splits are nonofficial. Repeated split summaries retain hardware/configuration boundaries and include attempted runs and distinct successful splits. `summary(across_splits=False)` separates folds; `summary(across_splits=True)` explicitly aggregates compatible folds from reloaded records. See [College experiments](docs/college_experiments.md) for Python, SSH notebooks, datasets, and detailed timing/memory fields. The CLI equivalent is `egbench repeat --dataset ogbn-arxiv --runs 10`; use `egbench repeat --help` for options.
+
 ```python
 bench = Benchmark(
     dataset="cora", models=["gcn", "graphsage", "sgformer", "graphgps"],
@@ -58,7 +60,7 @@ results = bench.run()
 print(results.summary())
 ```
 
-`Benchmark(dataset="cora", models="all", seeds=(42,43,44), **options)` runs models sequentially. `models="all"` selects the primary models. An explicit list selects any registered implementations, including experimental variants. No subprocess/environment activation details are required from Python.
+`Benchmark(dataset="cora", models="all", seeds=(42,43,44), **options)` runs models sequentially. `models="all"` selects the primary models. An explicit list selects any registered implementations, including the maintained PyG SGFormer alternative. No subprocess/environment activation details are required from Python.
 
 After OOM, remaining seeds are skipped. Pretraining deterministic failures also skip remaining seeds. Skipped rows have no measured accuracy/timing. `SKIPPED_DETERMINISTIC_FAILURE` and `SKIPPED_AFTER_OOM` distinguish these policies. Other models continue.
 
@@ -160,7 +162,7 @@ print(inspect_environment("graphgps"))
 print(inspect_environment("graphgps", verify=True))
 ```
 
-Setup requires Git and uv, may download packages and creates an isolated environment. Current locks support Windows x86-64. verify=True checks the clean pinned checkout and model imports; it does not claim successful training on all graphs. `EGBENCH_HOME` overrides the cache location; set it before invoking the library. No manual activation is needed.
+Setup requires Git and uv, may download packages and creates an isolated environment. Current locks support Windows x86-64; GraphGPS also has a [Linux x86-64 setup path](docs/graphgps_linux.md), which must be verified on the target server. SGFormer automatic setup remains Windows-only. verify=True checks the clean pinned checkout and model imports; it does not claim successful training on all graphs. `EGBENCH_HOME` overrides the cache location; set it before invoking the library. No manual activation is needed.
 
 ## Reports, provenance and recommendation
 
@@ -197,6 +199,7 @@ Recommendations use comparable successful primary measurements, require all expe
 | `dataset_path` | `None` |
 | `split_seed` | `0` |
 | `split_index` | `0` |
+| `split_mode` | `'official'` |
 | `model_options` | `{}` |
 | `worker_timeout_sec` | `7200` |
 
@@ -400,6 +403,23 @@ Filter primary measured results; GPU budget uses maximum reserved MiB across see
 | `--group` | `None` | group |
 | `--help` | — | Show syntax and options; do not run a benchmark. |
 
+### repeat
+
+Repeat with seeds 1..runs. Splits: fixed, official (cycle folds), or random (60/20/20).
+
+`egbench repeat --help`
+
+| Argument / option | Default | Use |
+|---|---|---|
+| `--dataset` | `'ogbn-arxiv'` | dataset |
+| `--models` | `'gcn,graphsage,gat,gatv2,appnp,sgc,mlp'` | models |
+| `--runs` | `10` | runs |
+| `--splits` | `'fixed'` | splits |
+| `--epochs` | `200` | epochs |
+| `--device` | `'cuda'` | device |
+| `--output-dir` | `'experiments/repeated'` | output dir |
+| `--help` | — | Show syntax and options; do not run a benchmark. |
+
 ### report
 
 Generate a Markdown report from saved benchmark results.
@@ -507,5 +527,3 @@ Create a searchable HTML data sheet; open the saved file in your browser.
 python -m pytest -q
 python -m build
 ```
-
-Linux update: GraphGPS now has a Linux x86-64 installation path; see [GraphGPS on Linux](docs/graphgps_linux.md). It requires verification on the target server. SGFormer automatic setup remains Windows-only.

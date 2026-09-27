@@ -34,8 +34,8 @@ def validate_graph(data, num_classes: int):
         if bool((data.y[mask] < 0).any()):
             raise ValueError(f"{name} includes unlabeled nodes")
         occupied |= mask
-    if torch.unique(data.y[data.train_mask]).numel() != num_classes:
-        raise ValueError("the training split must contain at least one example of every class")
+    # Official folds can omit rare classes from training (e.g. Texas).
+    # Keep the full label space and the supplied masks; this is not malformed data.
     return data
 
 
@@ -55,6 +55,8 @@ def stratified_masks(labels, seed: int):
     generator = torch.Generator().manual_seed(seed)
     masks = [torch.zeros(labels.numel(), dtype=torch.bool) for _ in range(3)]
     for label in torch.unique(labels):
+        if label < 0:
+            continue
         nodes = (labels == label).nonzero(as_tuple=True)[0]
         if nodes.numel() < 3:
             raise ValueError("generated splits need at least three nodes per class")

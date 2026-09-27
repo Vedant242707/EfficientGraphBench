@@ -26,6 +26,27 @@ DATASETS = {
         "ogbn-arxiv", "ogb", "ogbn-arxiv", "official time split", "Optional ogb package; more RAM"
     ),
     "custom": DatasetSpec("Custom graph", "custom", "", "user-provided", "CSV folder or NPZ"),
+    "ogbn-products": DatasetSpec(
+        "ogbn-products",
+        "ogb",
+        "ogbn-products",
+        "official sales-rank split",
+        "Optional ogb package; very large full-batch graph",
+    ),
+    "roman-empire": DatasetSpec(
+        "Roman Empire", "heterophilous", "Roman-empire", "official (10 choices)"
+    ),
+    "amazon-ratings": DatasetSpec(
+        "Amazon Ratings", "heterophilous", "Amazon-ratings", "official (10 choices)"
+    ),
+    "actor": DatasetSpec("Actor", "actor", "", "official (10 choices)"),
+    "texas": DatasetSpec("Texas", "webkb", "Texas", "official (10 choices)"),
+    "wisconsin": DatasetSpec("Wisconsin", "webkb", "Wisconsin", "official (10 choices)"),
+}
+
+OFFICIAL_SPLIT_COUNTS = {
+    "wikics": 20,
+    **dict.fromkeys(("roman-empire", "amazon-ratings", "actor", "texas", "wisconsin"), 10),
 }
 
 

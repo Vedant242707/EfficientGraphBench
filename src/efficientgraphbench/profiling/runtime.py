@@ -21,6 +21,30 @@ class MemoryProfiler:
         self.peak_gpu_bytes = None
         self.peak_gpu_reserved_bytes = None
         self.stop = threading.Event()
+        self.phase_snapshots = {}
+        self.phase_times = {}
+        self.phase_start = None
+
+    def mark(self, phase):
+        """End a sequential phase; memory is a snapshot, peaks are cumulative."""
+        synchronize(self.device)
+        now = time.perf_counter()
+        if self.phase_start is not None:
+            self.phase_times[phase] = now - self.phase_start
+        self.sample()
+        cuda = self.device.type == "cuda"
+        self.phase_snapshots[phase] = {
+            "rss_mib": self.process.memory_info().rss / 1024**2,
+            "gpu_allocated_mib": torch.cuda.memory_allocated(self.device) / 1024**2
+            if cuda
+            else None,
+            "gpu_reserved_mib": torch.cuda.memory_reserved(self.device) / 1024**2 if cuda else None,
+            "cumulative_peak_gpu_allocated_mib": torch.cuda.max_memory_allocated(self.device)
+            / 1024**2
+            if cuda
+            else None,
+        }
+        self.phase_start = time.perf_counter()
 
     def sample(self):
         self.peak_cpu_bytes = max(self.peak_cpu_bytes, self.process.memory_info().rss)
@@ -35,6 +59,7 @@ class MemoryProfiler:
         self.sample()
         self.thread = threading.Thread(target=self._poll, daemon=True)
         self.thread.start()
+        self.phase_start = time.perf_counter()
         return self
 
     def __exit__(self, *args):
@@ -47,6 +72,12 @@ class MemoryProfiler:
 
     def metrics(self):
         return {
+            "phase_times_sec": self.phase_times,
+            "memory_snapshots": self.phase_snapshots,
+            "memory_breakdown_method": (
+                "phase-end snapshots; CUDA peaks cumulative since profiler start; "
+                "RSS sampled every 10 ms"
+            ),
             "peak_gpu_allocated_mib": (
                 self.peak_gpu_bytes / 1024**2 if self.peak_gpu_bytes is not None else None
             ),

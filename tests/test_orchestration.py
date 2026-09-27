@@ -39,8 +39,20 @@ def test_canonical_splits_stable_and_sensitive(tmp_path):
 
 
 @pytest.mark.parametrize("model", ["graphgps", "graphormer", "sgformer"])
-def test_primary_never_imports_adapted(model):
+def test_reference_models_require_orchestrator(model):
     with pytest.raises(ValueError, match="orchestrator"):
+        build_model(ModelConfig(name=model), 6, 2)
+
+
+@pytest.mark.parametrize("model", ["graphgps_adapted", "graphormer_adapted", "appnp_adapted"])
+def test_removed_custom_models_are_rejected(model):
+    from efficientgraphbench.models.catalog import model_spec
+
+    with pytest.raises(ValueError, match="Unknown model"):
+        model_spec(model)
+    with pytest.raises(ValueError, match="model must"):
+        BenchmarkConfig(model=ModelConfig(name=model)).validate()
+    with pytest.raises(ValueError, match="unsupported model"):
         build_model(ModelConfig(name=model), 6, 2)
 
 

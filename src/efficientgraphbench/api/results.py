@@ -6,6 +6,7 @@ from pathlib import Path
 
 import pandas as pd
 
+from efficientgraphbench.benchmark.interchange import fingerprint
 from efficientgraphbench.results.status import status_of
 
 
@@ -41,6 +42,7 @@ class BenchmarkResults:
     def __init__(self, records, output_dir=None):
         self.records = [r.to_dict() if isinstance(r, BenchmarkResult) else dict(r) for r in records]
         self.output_dir = Path(output_dir) if output_dir else None
+        self.aggregate_splits = False
 
     def __iter__(self):
         return (BenchmarkResult(r) for r in self.records)
@@ -54,11 +56,29 @@ class BenchmarkResults:
     def to_dataframe(self):
         return pd.DataFrame(self.records)
 
-    def summary(self):
+    def summary(self, across_splits=None):
+        across_splits = self.aggregate_splits if across_splits is None else across_splits
         rows = []
         groups = {}
         for record in self.records:
-            key = (record.get("dataset"), record.get("comparison_group"), record.get("model"))
+            group = record.get("comparison_group")
+            if across_splits and record.get("graph_content_hash"):
+                config = {
+                    k: v
+                    for k, v in record.get("config", {}).items()
+                    if k not in {"seed", "split_seed", "split_index", "data_dir", "output_dir"}
+                }
+                group = fingerprint(
+                    {
+                        "graph": record["graph_content_hash"],
+                        "hardware": record.get("hardware_fingerprint"),
+                        "software": record.get("software"),
+                        "source": record.get("source_snapshot"),
+                        "profiler": record.get("profiler_settings"),
+                        "config": config,
+                    }
+                )[:16]
+            key = (record.get("dataset"), group, record.get("model"))
             groups.setdefault(key, []).append(record)
         for (dataset, group, model), records in groups.items():
             successful = [r for r in records if status_of(r) == "SUCCESS"]
@@ -72,6 +92,10 @@ class BenchmarkResults:
                     "model": model,
                     "source": records[-1].get("source_type"),
                     "runs": len(successful),
+                    "attempted_runs": len(records),
+                    "distinct_splits": len(
+                        {r.get("split_hash") for r in successful if r.get("split_hash")}
+                    ),
                     "accuracy_mean": scores.mean() if len(scores) else None,
                     "accuracy_sd": (scores.std(ddof=1) if len(scores) > 1 else 0.0)
                     if len(scores)

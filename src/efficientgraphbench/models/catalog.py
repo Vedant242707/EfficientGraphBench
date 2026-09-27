@@ -16,10 +16,11 @@ PRIMARY_MODELS = (
     "graphgps",
     "graphormer",
 )
-EXPERIMENTAL_MODELS = ("graphgps_adapted", "graphormer_adapted", "appnp_adapted", "sgformer_pyg")
 
 
 def model_spec(name):
+    if name not in {*PRIMARY_MODELS, "sgformer_pyg", "sgformer_reference"}:
+        raise ValueError(f"Unknown model: {name}")
     if name == "appnp":
         from efficientgraphbench.models.reference_appnp import COMMIT
 
@@ -53,22 +54,15 @@ def model_spec(name):
             "repository_url": "https://github.com/microsoft/Graphormer",
             "reason": "Official molecular/graph prediction pipeline has no validated adapter "
             "for continuous-feature citation node classification. No architecture "
-            "replacement is permitted; use graphormer_adapted explicitly.",
+            "replacement is permitted.",
         }
-    experimental = name.endswith("_adapted")
     return {
         "runner": "in_process",
         "environment": "pyg",
-        "category": "experimental"
-        if experimental
-        else ("baseline" if name == "mlp" else "primary"),
-        "source_type": "adapted"
-        if name in {"graphgps_adapted", "appnp_adapted"}
-        else ("custom_reimplementation" if experimental or name == "mlp" else "library"),
-        "implementation_type": "experimental" if experimental else "library",
-        "repository_url": None
-        if experimental or name == "mlp"
-        else "https://github.com/pyg-team/pytorch_geometric",
+        "category": "baseline" if name == "mlp" else "primary",
+        "source_type": "library",
+        "implementation_type": "library",
+        "repository_url": "https://github.com/pyg-team/pytorch_geometric",
     }
 
 

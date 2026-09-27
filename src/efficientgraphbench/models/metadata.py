@@ -23,7 +23,7 @@ def get_model(name):
         raise ValueError(f"Unknown model: {name}")
     spec = model_spec(name)
     status, reason = availability(name)
-    base = name.replace("_adapted", "").replace("_pyg", "").replace("_reference", "")
+    base = name.replace("_pyg", "").replace("_reference", "")
     return {
         **spec,
         **MODEL_METADATA[name],

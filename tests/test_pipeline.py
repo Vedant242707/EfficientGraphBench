@@ -44,8 +44,6 @@ def graph():
         "sgc",
         "appnp",
         "gatv2",
-        "graphormer_adapted",
-        "graphgps_adapted",
     ],
 )
 def test_end_to_end(tmp_path, monkeypatch, graph, name):
@@ -208,7 +206,15 @@ def test_display_names_in_comparison_and_report(tmp_path):
 
 
 def test_mlp_ignores_connections(graph):
+    from torch_geometric.nn.models import MLP
+
+    from efficientgraphbench.models.catalog import model_spec
+
     model = build_model(ModelConfig(name="mlp", dropout=0), 8, 3).eval()
+    assert type(model.model) is MLP
+    assert model_spec("mlp")["source_type"] == "library"
+    assert not any(isinstance(layer, torch.nn.BatchNorm1d) for layer in model.modules())
+    assert torch.equal(model(graph), model.model(graph.x))
     changed = graph.clone()
     changed.edge_index = torch.empty((2, 0), dtype=torch.long)
     assert torch.equal(model(graph), model(changed))
@@ -242,63 +248,23 @@ def test_invalid_propagation_config(kwargs):
         BenchmarkConfig(model=ModelConfig(**kwargs)).validate()
 
 
-@pytest.mark.parametrize("name", ["graphormer_adapted", "graphgps_adapted"])
-def test_transformer_node_permutation_and_repeated_eval(graph, name):
-    model = build_model(ModelConfig(name=name, hidden_dim=8), 8, 3).eval()
-    order = torch.randperm(graph.num_nodes)
-    inverse = torch.argsort(order)
-    permuted = graph.clone()
-    permuted.x = graph.x[order]
-    permuted.edge_index = inverse[graph.edge_index]
-    with torch.no_grad():
-        expected = model(graph)
-        assert torch.allclose(expected, model(graph), atol=1e-6)
-        assert torch.allclose(expected[order], model(permuted), atol=1e-5)
-    with pytest.raises(ValueError, match="divisible"):
-        BenchmarkConfig(model=ModelConfig(name=name, hidden_dim=7)).validate()
-
-
-def test_graphormer_structural_encodings_and_limit():
-    from efficientgraphbench.models.graphormer import MAX_NODES, prepare_graphormer
-
-    data = Data(x=torch.ones(4, 2), edge_index=torch.tensor([[0, 1], [1, 2]]))
-    prepare_graphormer(data)
-    assert data.graphormer_spatial[0].tolist() == [0, 1, 2, 32]
-    assert data.graphormer_spatial[2, 0].item() == 32
-    assert data.graphormer_in_degree.tolist() == [0, 1, 1, 0]
-    assert data.graphormer_out_degree.tolist() == [1, 1, 0, 0]
-    from efficientgraphbench.results.status import UnsupportedGraphSize
-
-    with pytest.raises(UnsupportedGraphSize, match="quadratic"):
-        prepare_graphormer(
-            Data(x=torch.zeros(MAX_NODES + 1, 2), edge_index=torch.empty((2, 0), dtype=torch.long))
-        )
-
-
-def test_graphormer_bias_learns(graph):
-    model = build_model(ModelConfig(name="graphormer_adapted", hidden_dim=8, dropout=0), 8, 3)
-    torch.nn.functional.cross_entropy(model(graph), graph.y).backward()
-    assert model.model.spatial.weight.grad.abs().sum() > 0
-    assert model.model.in_degree.weight.grad.abs().sum() > 0
-    with pytest.raises(ValueError, match="model must"):
-        BenchmarkConfig(model=ModelConfig(name="graphtransformer")).validate()
-
-
 def test_size_failure_metadata_and_no_preprocessing_allocation(tmp_path, monkeypatch, graph):
     monkeypatch.setattr(
         "efficientgraphbench.benchmark.runner.load_dataset", lambda *a, **k: DatasetBundle(graph, 3)
     )
-    monkeypatch.setattr("efficientgraphbench.models.graphormer.MAX_NODES", 20)
-    cfg = BenchmarkConfig(
-        model=ModelConfig(name="graphormer_adapted"), device="cpu", output_dir=str(tmp_path)
-    )
+    from efficientgraphbench.results.status import UnsupportedGraphSize
+
+    def reject_size(*args, **kwargs):
+        raise UnsupportedGraphSize("test implementation size limit", {"max_nodes": 20})
+
+    monkeypatch.setattr("efficientgraphbench.benchmark.runner.build_model", reject_size)
+    cfg = BenchmarkConfig(model=ModelConfig(name="gcn"), device="cpu", output_dir=str(tmp_path))
     result = run_benchmark(cfg)
     assert result["status"] == "UNSUPPORTED_GRAPH_SIZE"
     assert result["num_nodes"] == 24 and result["num_edges"] == 48
     assert result["implementation_limit"]["max_nodes"] == 20
     assert result["hardware"]["device"] == "cpu"
     assert result["failure_reason"]
-    assert getattr(graph, "graphormer_spatial", None) is None
     from efficientgraphbench.results.report import write_report
 
     text = write_report("cora", str(tmp_path)).read_text(encoding="utf-8")

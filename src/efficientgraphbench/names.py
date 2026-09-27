@@ -12,10 +12,7 @@ MODEL_NAMES = {
     "mlp": "MLP",
     "sgc": "SGC",
     "appnp": "APPNP",
-    "appnp_adapted": "APPNP (Adapted)",
     "gatv2": "GATv2",
-    "graphgps_adapted": "GraphGPS (Adapted)",
-    "graphormer_adapted": "Graphormer (Adapted)",
     "sgformer_pyg": "SGFormer (PyG)",
     "sgformer_reference": "SGFormer (Reference)",
 }

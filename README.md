@@ -24,6 +24,8 @@ Core dependencies include PyTorch and PyTorch Geometric. Install the PyTorch bui
 
 New computer or notebook? Follow [YOUR_NOTEBOOK_SETUP.md](YOUR_NOTEBOOK_SETUP.md).
 
+College GPU, OGB/heterophilous datasets, or 10–20 repeated runs? Follow [College experiments](docs/college_experiments.md). Use `Benchmark(dataset="ogbn-arxiv", models=["gcn"], runs=10, device="cuda").run()` or `egbench repeat --dataset ogbn-arxiv --runs 10`. Heterophilous datasets support ten official folds with `splits="official"`.
+
 ## Quick start
 
 ```bash

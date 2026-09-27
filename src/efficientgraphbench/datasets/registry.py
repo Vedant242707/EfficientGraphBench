@@ -3,7 +3,15 @@ from pathlib import Path
 
 import torch
 from torch_geometric.data import Data
-from torch_geometric.datasets import Amazon, Coauthor, Planetoid, WikiCS
+from torch_geometric.datasets import (
+    Actor,
+    Amazon,
+    Coauthor,
+    HeterophilousGraphDataset,
+    Planetoid,
+    WebKB,
+    WikiCS,
+)
 from torch_geometric.transforms import NormalizeFeatures
 from torch_geometric.utils import to_undirected
 
@@ -47,6 +55,12 @@ class DatasetBundle:
             "train_nodes": int(data.train_mask.sum()),
             "val_nodes": int(data.val_mask.sum()),
             "test_nodes": int(data.test_mask.sum()),
+            "training_class_counts": torch.bincount(
+                data.y[data.train_mask], minlength=self.num_classes
+            ).tolist(),
+            "missing_training_classes": sorted(
+                set(range(self.num_classes)) - set(data.y[data.train_mask].tolist())
+            ),
         }
 
 
@@ -57,7 +71,10 @@ def load_dataset(
     dataset_path: str | None = None,
     split_seed: int = 0,
     split_index: int = 0,
+    split_mode: str = "official",
 ) -> DatasetBundle:
+    if split_mode not in {"official", "random"}:
+        raise ValueError("split_mode must be official or random")
     name = canonical_dataset(name)
     if name not in DATASETS:
         raise ValueError(f"unsupported dataset: {name}; use egbench datasets to see choices")
@@ -71,8 +88,10 @@ def load_dataset(
         split = "user-provided"
     elif spec.loader == "ogb":
         data, classes = _load_ogb(name, root)
-        split = "ogb-official-time"
-        edge_policy = "converted-to-undirected"
+        split = "ogb-official-time" if name == "ogbn-arxiv" else "ogb-official-sales-rank"
+        edge_policy = (
+            "converted-to-undirected" if name == "ogbn-arxiv" else "as-provided-undirected"
+        )
     else:
         if spec.loader == "planetoid":
             dataset = Planetoid(directory, spec.argument, split="public")
@@ -85,6 +104,12 @@ def load_dataset(
             edge_policy = "converted-to-undirected"
         elif spec.loader == "flickr":
             dataset = Flickr(directory)
+        elif spec.loader == "heterophilous":
+            dataset = HeterophilousGraphDataset(directory, spec.argument)
+        elif spec.loader == "actor":
+            dataset = Actor(directory)
+        elif spec.loader == "webkb":
+            dataset = WebKB(directory, spec.argument)
         else:
             raise ValueError(f"unrecognized dataset loader: {spec.loader}")
         data, classes = dataset[0], dataset.num_classes
@@ -95,14 +120,21 @@ def load_dataset(
         if spec.split == "generated":
             data.train_mask, data.val_mask, data.test_mask = stratified_masks(data.y, split_seed)
             split = f"stratified-per-class-60-20-20-seed{split_seed}"
-        elif spec.loader == "wikics":
+        elif data.train_mask.ndim == 2:
             if not 0 <= split_index < data.train_mask.shape[1]:
-                raise ValueError("WikiCS split_index must be between 0 and 19")
-            data.train_mask = data.train_mask[:, split_index]
-            data.val_mask = data.val_mask[:, split_index]
-            split = f"wikics-official-{split_index}"
+                raise ValueError(
+                    f"{name} split_index must be between 0 and {data.train_mask.shape[1] - 1}"
+                )
+            for key in ("train_mask", "val_mask", "test_mask"):
+                mask = getattr(data, key)
+                if mask.ndim == 2:
+                    setattr(data, key, mask[:, split_index])
+            split = f"{name}-official-{split_index}"
         else:
             split = "planetoid-public" if spec.loader == "planetoid" else "flickr-official"
+    if split_mode == "random":
+        data.train_mask, data.val_mask, data.test_mask = stratified_masks(data.y, split_seed)
+        split = f"nonofficial-stratified-per-class-60-20-20-seed{split_seed}"
     validate_graph(data, classes)
     return DatasetBundle(
         data,
@@ -120,14 +152,16 @@ def _load_ogb(name, root):
         # NumPy loader avoids loading pickled PyG objects from third-party caches.
         from ogb.nodeproppred import NodePropPredDataset
     except ImportError as exc:
-        raise ValueError(
-            "ogbn-arxiv requires OGB: uv pip install --python .venv/Scripts/python.exe -e '.[ogb]'"
-        ) from exc
+        raise ValueError("This dataset requires OGB: python -m pip install 'ogb>=1.3.6'") from exc
     dataset = NodePropPredDataset(name=name, root=str(root))
     graph, labels = dataset[0]
     data = Data(
         x=torch.as_tensor(graph["node_feat"], dtype=torch.float32),
-        edge_index=to_undirected(torch.as_tensor(graph["edge_index"], dtype=torch.long)),
+        edge_index=(
+            to_undirected(torch.as_tensor(graph["edge_index"], dtype=torch.long))
+            if name == "ogbn-arxiv"
+            else torch.as_tensor(graph["edge_index"], dtype=torch.long)
+        ),
         y=torch.as_tensor(labels, dtype=torch.long).reshape(-1),
     )
     splits = dataset.get_idx_split()

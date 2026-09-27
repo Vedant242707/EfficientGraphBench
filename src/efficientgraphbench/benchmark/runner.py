@@ -20,7 +20,6 @@ from efficientgraphbench.benchmark.identity import physical_hardware
 from efficientgraphbench.benchmark.interchange import export_graph, fingerprint
 from efficientgraphbench.datasets.registry import load_dataset
 from efficientgraphbench.models.catalog import ROOT, model_spec
-from efficientgraphbench.models.graphormer import prepare_graphormer
 from efficientgraphbench.models.registry import MODEL_METADATA, build_model
 from efficientgraphbench.names import dataset_name, model_name
 from efficientgraphbench.paths import CHECKOUT, PACKAGE, WORKER, environment_dir
@@ -169,6 +168,7 @@ def _run_validated(config):
                 "cuda": torch.version.cuda,
             },
             profiler_settings={
+                "measurement_revision": "phase-snapshots-v1",
                 "warmup": config.training.latency_warmup,
                 "repeats": config.training.latency_repeats,
                 "scope": "warmed-full-graph-forward-including-interface",
@@ -209,10 +209,11 @@ def _run_validated(config):
             dataset_path=config.dataset_path,
             split_seed=config.split_seed,
             split_index=config.split_index,
+            split_mode=config.split_mode,
         )
         record.update(bundle.metadata())
         exchange_dir = root / "exchange" / run_id
-        interchange = export_graph(bundle, exchange_dir)
+        interchange = export_graph(bundle, exchange_dir, cache_dir=root / "graph-cache")
         record.update(interchange)
         record["comparison_group"] = fingerprint(
             {
@@ -263,8 +264,6 @@ def _run_validated(config):
             finally:
                 record["worker_wall_time_sec"] = time.perf_counter() - worker_start
             return record
-        if config.model.name == "graphormer_adapted":
-            prepare_graphormer(bundle.data)
         comparison.update(
             {
                 key: record[key]
@@ -277,6 +276,7 @@ def _run_validated(config):
             }
         )
         record["preprocessing_time_sec"] = time.perf_counter() - start
+        profiler.mark("dataset_preprocessing_and_exchange")
         stage = "allocation"
         with nullcontext():
             if getattr(bundle.data, "raw_x", None) is not None:
@@ -315,8 +315,17 @@ def _run_validated(config):
                 {f"{type(layer).__module__}.{type(layer).__name__}" for layer in model.modules()}
             )
             checkpoint = root / "checkpoints" / f"{run_id}.pt"
+            synchronize(device)
+            record["parameter_memory_mib"] = (
+                sum(p.numel() * p.element_size() for p in model.parameters()) / 1024**2
+            )
+            record["graph_tensor_memory_mib"] = (
+                sum(v.numel() * v.element_size() for _, v in data if torch.is_tensor(v)) / 1024**2
+            )
+            profiler.mark("model_initialization_and_device_transfer")
             stage = "training"
             record.update(train(model, data, config.training, device, checkpoint))
+            profiler.mark("training_checkpoint_and_test")
             record["checkpoint_path"] = str(checkpoint)
             record.update(
                 measure_latency(
@@ -328,6 +337,7 @@ def _run_validated(config):
                 )
             )
             synchronize(device)
+            profiler.mark("inference_warmup_and_measurement")
         record["status"] = "SUCCESS"
         logger.info("Completed accuracy=%.4f", record["accuracy"])
     except RunnerError as exc:
