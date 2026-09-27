@@ -122,6 +122,50 @@ def test_ogb_indices_and_labels(name, tiny_graph, monkeypatch, tmp_path):
         assert torch.equal(loaded.data.edge_index, tiny_graph.edge_index)
         assert loaded.split == "ogb-official-sales-rank"
 
+    # Later seeds must not invoke OGB's pickle-cache loader.
+    def forbidden_cache_load(**kwargs):
+        raise AssertionError("OGB legacy cache loader was called")
+
+    monkeypatch.setitem(
+        sys.modules, "ogb.nodeproppred", SimpleNamespace(NodePropPredDataset=forbidden_cache_load)
+    )
+    second = load_dataset(name, tmp_path)
+    assert second.fingerprint == loaded.fingerprint
+
+
+def test_ogb_legacy_cache_recovery(tiny_graph, monkeypatch, tmp_path):
+    import pandas as pd
+
+    directory = tmp_path / "ogbn_arxiv"
+    raw = directory / "raw"
+    split = directory / "split" / "time"
+    raw.mkdir(parents=True)
+    split.mkdir(parents=True)
+    (raw / "edge.csv.gz").touch()
+    pd.DataFrame(tiny_graph.y.numpy()).to_csv(raw / "node-label.csv.gz", index=False, header=False)
+    for key, mask in (("train", "train"), ("valid", "val"), ("test", "test")):
+        pd.DataFrame(getattr(tiny_graph, f"{mask}_mask").nonzero().numpy()).to_csv(
+            split / f"{key}.csv.gz", index=False, header=False
+        )
+
+    def forbidden(**kwargs):
+        raise AssertionError("Legacy pickle loader must not run")
+
+    def raw_graph(path, add_inverse_edge):
+        assert not add_inverse_edge
+        return [{"node_feat": tiny_graph.x.numpy(), "edge_index": tiny_graph.edge_index.numpy()}]
+
+    monkeypatch.setitem(
+        sys.modules, "ogb.nodeproppred", SimpleNamespace(NodePropPredDataset=forbidden)
+    )
+    monkeypatch.setitem(
+        sys.modules, "ogb.io.read_graph_raw", SimpleNamespace(read_csv_graph_raw=raw_graph)
+    )
+    first = load_dataset("ogbn-arxiv", tmp_path)
+    assert first.num_classes == 40
+    assert torch.equal(first.data.y, tiny_graph.y)
+    assert load_dataset("ogbn-arxiv", tmp_path).fingerprint == first.fingerprint
+
 
 @pytest.mark.parametrize("failure", ["overlap", "empty", "nan", "edge", "labels"])
 def test_invalid_graph_rejected(tiny_graph, failure):

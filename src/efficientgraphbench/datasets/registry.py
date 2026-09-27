@@ -1,6 +1,7 @@
 from dataclasses import dataclass, field
 from pathlib import Path
 
+import numpy as np
 import torch
 from torch_geometric.data import Data
 from torch_geometric.datasets import (
@@ -153,8 +154,49 @@ def _load_ogb(name, root):
         from ogb.nodeproppred import NodePropPredDataset
     except ImportError as exc:
         raise ValueError("This dataset requires OGB: python -m pip install 'ogb>=1.3.6'") from exc
-    dataset = NodePropPredDataset(name=name, root=str(root))
-    graph, labels = dataset[0]
+    directory = Path(root) / name.replace("-", "_")
+    cache = directory / "processed" / "egbench-numeric-v1.npz"
+    if cache.exists():
+        with np.load(cache, allow_pickle=False) as stored:
+            graph = {key: stored[key] for key in ("node_feat", "edge_index")}
+            labels = stored["labels"]
+            classes = int(stored["num_classes"])
+            splits = {key: stored[key] for key in ("train", "valid", "test")}
+    else:
+        raw = directory / "raw"
+        if (raw / "edge.csv.gz").exists():
+            # OGB's existing protocol-4 pickle cache is incompatible with
+            # newer torch.load defaults. Rebuild from official numeric CSVs.
+            import pandas as pd
+            from ogb.io.read_graph_raw import read_csv_graph_raw
+
+            graph = read_csv_graph_raw(str(raw), add_inverse_edge=name == "ogbn-products")[0]
+            labels = pd.read_csv(raw / "node-label.csv.gz", header=None).to_numpy(copy=True)
+            classes = 40 if name == "ogbn-arxiv" else 47
+            split_dir = directory / "split" / ("time" if name == "ogbn-arxiv" else "sales_ranking")
+            splits = {
+                key: pd.read_csv(split_dir / f"{key}.csv.gz", header=None)
+                .to_numpy(copy=True)
+                .reshape(-1)
+                for key in ("train", "valid", "test")
+            }
+        else:
+            dataset = NodePropPredDataset(name=name, root=str(root))
+            graph, labels = dataset[0]
+            classes = dataset.num_classes
+            splits = dataset.get_idx_split()
+        cache.parent.mkdir(parents=True, exist_ok=True)
+        temporary = cache.with_suffix(".npz.tmp")
+        with temporary.open("wb") as stream:
+            np.savez(
+                stream,
+                node_feat=graph["node_feat"],
+                edge_index=graph["edge_index"],
+                labels=labels,
+                num_classes=classes,
+                **splits,
+            )
+        temporary.replace(cache)
     data = Data(
         x=torch.as_tensor(graph["node_feat"], dtype=torch.float32),
         edge_index=(
@@ -162,11 +204,10 @@ def _load_ogb(name, root):
             if name == "ogbn-arxiv"
             else torch.as_tensor(graph["edge_index"], dtype=torch.long)
         ),
-        y=torch.as_tensor(labels, dtype=torch.long).reshape(-1),
+        y=torch.tensor(labels, dtype=torch.long).reshape(-1),
     )
-    splits = dataset.get_idx_split()
     for source, target in (("train", "train_mask"), ("valid", "val_mask"), ("test", "test_mask")):
         mask = torch.zeros(data.num_nodes, dtype=torch.bool)
         mask[torch.as_tensor(splits[source], dtype=torch.long)] = True
         setattr(data, target, mask)
-    return data, dataset.num_classes
+    return data, classes
