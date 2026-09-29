@@ -28,6 +28,8 @@ College GPU, OGB/heterophilous datasets, or 10–20 repeated runs? Follow [Colle
 
 ## Quick start
 
+Export professor/report figures from saved results with `egbench plot --summary PATH/summary.csv --output-dir PATH/plots`. See [Plot saved results](docs/plots.md).
+
 ```bash
 egbench models
 egbench run --dataset cora --model gcn

@@ -639,6 +639,22 @@ def repeat(
 
 
 @app.command()
+def plot(
+    summary: Annotated[Path, typer.Option(exists=True)],
+    output_dir: str = "experiments/plots",
+):
+    """Export accuracy/latency and GPU-memory PNG/PDF charts from a summary CSV."""
+    from efficientgraphbench.results.plots import plot_summary
+
+    try:
+        for path in plot_summary(summary, output_dir):
+            console.print(str(path))
+    except (ValueError, OSError) as exc:
+        console.print(f"[red]{exc}[/red]")
+        raise typer.Exit(1) from exc
+
+
+@app.command()
 def compare(dataset: str = "cora", output_dir: str = "experiments", report: bool = False):
     """Show the latest comparison table for this dataset."""
 

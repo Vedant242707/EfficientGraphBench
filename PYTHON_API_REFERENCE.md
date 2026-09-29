@@ -333,6 +333,18 @@ List model sources, environment readiness, and experimental alternatives.
 | `name` | `None` | name |
 | `--help` | — | Show syntax and options; do not run a benchmark. |
 
+### plot
+
+Export accuracy/latency and GPU-memory PNG/PDF charts from a summary CSV.
+
+`egbench plot --help`
+
+| Argument / option | Default | Use |
+|---|---|---|
+| `--summary` | `required` | summary |
+| `--output-dir` | `'experiments/plots'` | output dir |
+| `--help` | — | Show syntax and options; do not run a benchmark. |
+
 ### prepare
 
 Map CSV, TSV, XLSX, or PDF tables into a validated graph dataset.

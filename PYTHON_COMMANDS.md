@@ -1,5 +1,7 @@
 # EfficientGraphBench — notebook guide
 
+Need accuracy/latency and GPU memory charts? See [Plot saved results](docs/plots.md). No retraining is required.
+
 **Already installed? Start at Step 1. You do not need to run every example in this file.**
 
 **College GPU / professor's experiments:** see [the short college guide](docs/college_experiments.md). Use `runs=10` or `runs=20` instead of `seeds=[...]`; use `splits="official"` to cycle heterophilous folds or `splits="random"` for new 60/20/20 splits.
