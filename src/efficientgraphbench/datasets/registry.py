@@ -36,6 +36,12 @@ class DatasetBundle:
     edge_policy: str = "as-provided"
     fingerprint: str = ""
     label_mapping: dict = field(default_factory=dict)
+    name: str = "Custom graph"
+
+    def profile(self):
+        from efficientgraphbench.datasets.profile import profile_dataset
+
+        return profile_dataset(self)
 
     def metadata(self):
         data = self.data
@@ -145,6 +151,7 @@ def load_dataset(
         edge_policy=edge_policy,
         fingerprint=graph_fingerprint(data),
         label_mapping=mapping,
+        name=spec.name,
     )
 
 

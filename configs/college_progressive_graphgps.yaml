@@ -1,0 +1,18 @@
+# Validate the isolated Linux reference worker before trying larger graphs.
+dataset: texas
+models: [gcn, graphgps]
+seeds: [1]
+device: cuda
+output_dir: experiments/college-progressive-graphgps
+progressive:
+  progression_strategy: deterministic_nested
+  progression_seed: 42
+  selection_metric: val_f1_macro
+  min_candidates: 2
+  stages:
+    - name: initial
+      graph_fraction: 0.5
+      additional_epochs: 2
+    - name: full
+      graph_fraction: 1.0
+      additional_epochs: 2

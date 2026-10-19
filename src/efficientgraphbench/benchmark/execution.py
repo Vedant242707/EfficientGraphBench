@@ -119,11 +119,40 @@ class ExternalEnvironmentRunner(BaseModelRunner):
             if result["status"] == "SUCCESS":
                 if process.returncode != 0:
                     raise ValueError("Worker reported success but exited unsuccessfully")
+                if request.get("benchmark_mode") == "progressive_multi_fidelity":
+                    from efficientgraphbench.benchmark.interchange import file_sha256
+
+                    if result.get("benchmark_mode") != "progressive_multi_fidelity":
+                        raise ValueError("Worker protocol mismatch")
+                    for key in ("stage_index", "stage_graph_hash", "source_graph_hash"):
+                        expected = (
+                            request["stage_index"]
+                            if key == "stage_index"
+                            else request["stage_metadata"][key]
+                        )
+                        if result.get(key) != expected:
+                            raise ValueError("Progressive worker identity mismatch: " + key)
+                    if not 0 <= result.get("validation_metric", -1) <= 1:
+                        raise ValueError("Invalid progressive validation metric")
+                    if result.get("hardware_fingerprint") != request["hardware_fingerprint"]:
+                        raise ValueError("Worker hardware mismatch")
+                    if file_sha256(result["checkpoint_path"]) != result["checkpoint_id"]:
+                        raise ValueError("Worker checkpoint checksum mismatch")
+                    return result
                 for key in ("accuracy", "validation_accuracy"):
                     if not isinstance(result.get(key), (int, float)) or not 0 <= result[key] <= 1:
                         raise ValueError(f"Invalid worker {key}")
                 if result.get("hardware_fingerprint") != request["hardware_fingerprint"]:
                     raise ValueError("Worker used different physical hardware")
+                for metric in ("precision", "recall", "f1"):
+                    for suffix in ("", "_weighted", "_macro", "_micro"):
+                        key = metric + suffix
+                        if key in result and (
+                            type(result[key]) not in (int, float)
+                            or not math.isfinite(result[key])
+                            or not 0 <= result[key] <= 1
+                        ):
+                            raise ValueError(f"Invalid worker classification metric: {key}")
                 for key in (
                     "preprocessing_time_sec",
                     "training_time_sec",

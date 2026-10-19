@@ -7,6 +7,8 @@ from pathlib import Path
 import pandas as pd
 
 from efficientgraphbench.benchmark.interchange import fingerprint
+from efficientgraphbench.results.classification import exceptional_notes
+from efficientgraphbench.results.protocol import validate_full_records
 from efficientgraphbench.results.status import status_of
 
 
@@ -41,6 +43,7 @@ class BenchmarkResult:
 class BenchmarkResults:
     def __init__(self, records, output_dir=None):
         self.records = [r.to_dict() if isinstance(r, BenchmarkResult) else dict(r) for r in records]
+        validate_full_records(self.records)
         self.output_dir = Path(output_dir) if output_dir else None
         self.aggregate_splits = False
 
@@ -56,7 +59,8 @@ class BenchmarkResults:
     def to_dataframe(self):
         return pd.DataFrame(self.records)
 
-    def summary(self, across_splits=None):
+    def summary(self, across_splits=None, detailed=False):
+        validate_full_records(self.records)
         across_splits = self.aggregate_splits if across_splits is None else across_splits
         rows = []
         groups = {}
@@ -101,6 +105,7 @@ class BenchmarkResults:
                     if len(scores)
                     else None,
                     "status": ", ".join(dict.fromkeys(status_of(r) for r in records)),
+                    "classification_alert": bool(exceptional_notes(successful)),
                     **{
                         key: pd.Series(
                             [r[key] for r in successful if r.get(key) is not None], dtype=float
@@ -108,6 +113,12 @@ class BenchmarkResults:
                         if any(r.get(key) is not None for r in successful)
                         else None
                         for key in (
+                            "num_nodes",
+                            "precision",
+                            "recall",
+                            "f1",
+                            "f1_macro",
+                            "f1_micro",
                             "preprocessing_time_sec",
                             "training_time_sec",
                             "inference_latency_median_ms",
@@ -118,7 +129,37 @@ class BenchmarkResults:
                     },
                 }
             )
+            if detailed:
+                for metric in ("precision", "recall", "f1"):
+                    for average in ("macro", "micro", "weighted"):
+                        key = f"{metric}_{average}"
+                        values = [r[key] for r in successful if r.get(key) is not None]
+                        rows[-1][key] = sum(values) / len(values) if values else None
         return pd.DataFrame(rows)
+
+    def metric_notes(self):
+        """Only exceptional macro/micro results, followed by a brief explanation."""
+        from efficientgraphbench.results.classification import EXPLANATION, exceptional_notes
+
+        return "\n".join([*exceptional_notes(self.records), EXPLANATION])
+
+    def show(self):
+        """Display readable classification/performance tables in notebooks or terminals."""
+        from efficientgraphbench.results.display import show_results
+
+        show_results(self)
+
+    def pareto(self, **options):
+        """Analyze measured multi-objective trade-offs without rerunning tests."""
+        from efficientgraphbench.results.pareto import pareto_frontier
+
+        return pareto_frontier(self.records, **options)
+
+    def show_all(self, output_dir=None, **options):
+        """Show metrics, selected candidates and plots together; return the saved report paths."""
+        from efficientgraphbench.results.dashboard import show_all
+
+        return show_all(self, output_dir, **options)
 
     def _path(self, path):
         path = Path(path)
@@ -147,7 +188,11 @@ class BenchmarkResults:
         return path
 
     def save_markdown(self, path):
-        frame = self.summary().fillna("—")
+        from efficientgraphbench.results.presentation import failure_summaries, successful_records
+
+        visible = BenchmarkResults(successful_records(self.records))
+        visible.aggregate_splits = self.aggregate_splits
+        frame = visible.summary().fillna("—")
 
         def cell(value):
             return str(value).replace("|", "\\|").replace("\n", " ")
@@ -162,11 +207,11 @@ class BenchmarkResults:
             "| " + " | ".join(cell(v) for v in row) + " |"
             for row in frame.itertuples(index=False, name=None)
         ]
-        lines += ["", "Failures and skipped runs:", ""]
+        lines += ["", visible.metric_notes(), "", "Models not completed:", ""]
         lines += [
-            f"- {r.get('model')}, seed {r.get('seed')}: {status_of(r)} — {r.get('failure_reason', '')}"  # noqa: E501
-            for r in self.records
-            if status_of(r) != "SUCCESS"
+            f"- {cell(r['Model'])}: {cell(r['Status'])} — {cell(r['Reason'])}; "
+            f"{r['Skipped']} skipped. {cell(r['Note'])}"
+            for r in failure_summaries(self.records)
         ]
         path = self._path(path)
         path.write_text("\n".join(lines) + "\n", encoding="utf-8")

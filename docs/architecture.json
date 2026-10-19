@@ -1,0 +1,34 @@
+{
+  "schema_version": 1,
+  "diagram_type": "architecture",
+  "meta": {"title": "EfficientGraphBench architecture", "quality_profile": "showcase"},
+  "components": [
+    {"id":"entry","type":"frontend","label":"Python / CLI","sublabel":"Notebook or terminal","pos":[40,60],"size":[200,70]},
+    {"id":"schedule","type":"backend","label":"Run controller","sublabel":"Config, models, seeds, sizes","pos":[340,60],"size":[220,70]},
+    {"id":"data","type":"database","label":"Dataset layer","sublabel":"Load, prepare, validate, split","pos":[660,60],"size":[230,70]},
+    {"id":"profile","type":"backend","label":"Explore / profile","sublabel":"Tables and graph statistics","pos":[990,60],"size":[230,70]},
+    {"id":"canonical","type":"backend","label":"Canonical graph","sublabel":"Features, edges, labels, masks","pos":[660,240],"size":[230,70]},
+    {"id":"local","type":"backend","label":"In-process models","sublabel":"PyG and pinned APPNP","pos":[340,420],"size":[230,70]},
+    {"id":"reference","type":"backend","label":"Reference worker","sublabel":"SGFormer / GraphGPS","pos":[990,420],"size":[230,70]},
+    {"id":"metrics","type":"backend","label":"Train and measure","sublabel":"Accuracy, time, memory","pos":[660,600],"size":[230,70]},
+    {"id":"records","type":"database","label":"Run records","sublabel":"Metrics, status, provenance","pos":[340,600],"size":[230,70]},
+    {"id":"reports","type":"frontend","label":"Results and charts","sublabel":"Tables, exports, recommendations","pos":[40,600],"size":[230,70]}
+  ],
+  "connections": [
+    {"from":"entry","to":"schedule"},
+    {"from":"schedule","to":"data"},
+    {"from":"data","to":"profile","variant":"dashed"},
+    {"from":"data","to":"canonical"},
+    {"from":"canonical","to":"local"},
+    {"from":"canonical","to":"reference"},
+    {"from":"local","to":"metrics"},
+    {"from":"reference","to":"metrics"},
+    {"from":"metrics","to":"records"},
+    {"from":"records","to":"reports"}
+  ],
+  "cards": [
+    {"dot":"cyan","title":"Execution","items":["One host; CPU or CUDA","Model and seed jobs run sequentially"]},
+    {"dot":"emerald","title":"Shared graph contract","items":["Node classification with train / validation / test masks","Reference workers receive hashed NPZ and JSON inputs"]},
+    {"dot":"amber","title":"Scope","items":["Full-graph training; scaling trains fresh induced subgraphs","Graphormer is registered but unsupported for this task"]}
+  ]
+}

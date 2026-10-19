@@ -1,0 +1,26 @@
+# Ten training seeds on the same dataset split; this is not ten random splits.
+dataset: pubmed
+models: [gcn, graphsage, gat, gatv2, appnp, sgc, mlp, sgformer_pyg]
+runs: 10
+device: cuda
+output_dir: experiments/college-progressive-pubmed
+progressive:
+  progression_strategy: deterministic_nested
+  progression_seed: 42
+  selection_metric: val_f1_macro
+  min_candidates: 2
+  promotion_margin: 0.01
+  uncertainty_aware: true
+  recovery_threshold: 0.95
+  stages:
+    - name: initial
+      graph_fraction: 0.25
+      additional_epochs: 20
+      retain_fraction: 0.7
+    - name: growth
+      graph_fraction: 0.5
+      additional_epochs: 60
+      retain_fraction: 0.7
+    - name: full
+      graph_fraction: 1.0
+      additional_epochs: 120

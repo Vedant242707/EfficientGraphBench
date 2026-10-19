@@ -2,6 +2,12 @@
 
 ## Unreleased
 
+- Add Progressive Multi-Fidelity with nested graph growth, checkpoint continuation, validation-only pruning, adaptation/recovery measurements and explicit Full-baseline compatibility.
+- Add tested official SGFormer/GraphGPS reference-worker continuation; preserve SGFormer PyG as a separate identity and Graphormer's unsupported task status.
+- Separate optimization/evaluation timing, validate protocol and seed coverage, and retain failed-attempt evidence.
+- Add dataset profiling, classification metrics, Pareto comparisons and dark HTML/portrait-print reports with measured charts.
+- Add college CUDA smoke and ten-seed PubMed Progressive configurations, plus Linux GraphGPS verification instructions.
+
 - Remove custom Graphormer/GraphGPS model modules and adapted APPNP/MLP classes, registry entries, and obsolete tests. Maintained library/repository implementations and their interface wrappers remain.
 
 - Replace the primary custom MLP baseline with `torch_geometric.nn.models.MLP` (ReLU, no normalization, linear output); retain truthful historical provenance for existing results. New MLP measurements require rerunning.

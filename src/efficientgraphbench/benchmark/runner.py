@@ -47,6 +47,7 @@ def run_benchmark(config):
     except (ValueError, TypeError) as exc:
         record = {
             "schema_version": 4,
+            "benchmark_mode": "full",
             "run_id": uuid.uuid4().hex,
             "batch_id": getattr(config, "_result_batch", None),
             "dataset": config.dataset,
@@ -110,6 +111,7 @@ def _run_validated(config):
     group_id = hashlib.sha256(json.dumps(comparison, sort_keys=True).encode()).hexdigest()[:16]
     record = {
         "schema_version": 3,
+        "benchmark_mode": "full",
         "batch_id": getattr(config, "_result_batch", None),
         "run_id": run_id,
         "dataset": config.dataset,
@@ -215,12 +217,25 @@ def _run_validated(config):
         exchange_dir = root / "exchange" / run_id
         interchange = export_graph(bundle, exchange_dir, cache_dir=root / "graph-cache")
         record.update(interchange)
+        from efficientgraphbench.benchmark.execution_identity import execution_identity
+
+        if external and not Path(spec["python"]).exists():
+            raise RunnerError(
+                "ENVIRONMENT_NOT_INSTALLED", "Run egbench setup " + spec["environment"]
+            )
+        record["execution_identity"] = execution_identity(config, interchange, physical, spec)
+        record["evaluation_policy"] = {
+            "checkpoint": "best_validation_accuracy",
+            "validation": "every_epoch",
+        }
+
         record["comparison_group"] = fingerprint(
             {
                 "hardware": hardware_hash,
                 "graph": interchange["canonical_graph_hash"],
                 "split": interchange["split_hash"],
                 "task": "transductive-node-classification",
+                "benchmark_mode": "full",
                 "metric": "accuracy",
                 "profiler": record["profiler_settings"],
                 "category": "experimental" if spec["category"] == "experimental" else "primary",
@@ -355,9 +370,11 @@ def _run_validated(config):
         )
         logger.warning("Unsupported graph size: %s", exc)
     except (torch.OutOfMemoryError, MemoryError) as exc:
+        record.update(getattr(exc, "progressive_measurements", {}))
         record.update(status="OOM", error=str(exc), failure_reason=str(exc))
         logger.exception("Out of memory")
     except Exception as exc:
+        record.update(getattr(exc, "progressive_measurements", {}))
         record.update(
             status="PREPROCESSING_ERROR" if stage == "preprocessing" else "RUNTIME_ERROR",
             error=f"{type(exc).__name__}: {exc}",

@@ -69,6 +69,8 @@ class MemoryProfiler:
         if self.device.type == "cuda":
             self.peak_gpu_bytes = torch.cuda.max_memory_allocated(self.device)
             self.peak_gpu_reserved_bytes = torch.cuda.max_memory_reserved(self.device)
+        if len(args) > 1 and args[1] is not None:
+            args[1].resource_measurements = self.metrics()
 
     def metrics(self):
         return {

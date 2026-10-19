@@ -56,6 +56,16 @@ class Benchmark:
             key in options for key in ("split_seed", "split_index", "split_mode")
         ):
             raise ValueError("splits selects the split settings; remove explicit split options")
+        self.benchmark_mode = options.pop("benchmark_mode", "full")
+        self.progressive = options.pop("progressive", None)
+        if self.benchmark_mode not in {"full", "progressive_multi_fidelity"}:
+            raise ValueError("Unknown benchmark_mode")
+        if self.benchmark_mode == "full" and self.progressive is not None:
+            raise ValueError("progressive config requires progressive_multi_fidelity mode")
+        if self.benchmark_mode == "progressive_multi_fidelity" and splits != "fixed":
+            raise ValueError(
+                "Progressive mode preserves one fixed split; use split_index/split_seed"
+            )
         self.splits = splits
         self.dataset, self.options = dataset, options
         self.models = (
@@ -73,6 +83,16 @@ class Benchmark:
             raise ValueError("models and seeds must not be empty")
 
     def run(self):
+        if self.benchmark_mode == "progressive_multi_fidelity":
+            from efficientgraphbench.progressive.controller import ProgressiveBenchmark
+
+            return ProgressiveBenchmark(
+                self.dataset,
+                self.models,
+                seeds=self.seeds,
+                progressive=self.progressive,
+                **self.options,
+            ).run()
         jobs = []
         base = make_config(self.dataset, self.models[0], **self.options)
         for model in self.models:

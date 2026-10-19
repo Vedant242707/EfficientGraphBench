@@ -21,6 +21,8 @@ def get_model(name):
     name = name.lower()
     if name not in MODEL_NAMES:
         raise ValueError(f"Unknown model: {name}")
+    from efficientgraphbench.progressive.capabilities import progressive_capabilities
+
     spec = model_spec(name)
     status, reason = availability(name)
     base = name.replace("_pyg", "").replace("_reference", "")
@@ -28,6 +30,7 @@ def get_model(name):
         **spec,
         **MODEL_METADATA[name],
         "model_id": name,
+        "progressive_capabilities": progressive_capabilities(name),
         "display_name": MODEL_NAMES[name],
         "implementation_source": spec.get("repository_url") or "EfficientGraphBench",
         "runner_type": spec["runner"],

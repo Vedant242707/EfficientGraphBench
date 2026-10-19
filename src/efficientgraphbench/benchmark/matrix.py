@@ -1,7 +1,10 @@
 """Shared sequential matrix scheduling for Python and CLI."""
 
 import copy
+import json
+import time
 import uuid
+from pathlib import Path
 
 from efficientgraphbench.benchmark.runner import run_benchmark
 from efficientgraphbench.results.status import status_of
@@ -9,6 +12,7 @@ from efficientgraphbench.results.writer import write_result
 
 
 def run_matrix(jobs, execute=None):
+    started = time.perf_counter()
     execute = execute or run_benchmark
     batch = uuid.uuid4().hex
     records, blocked = [], {}
@@ -24,6 +28,11 @@ def run_matrix(jobs, execute=None):
                 "allocation",
             }
             result = copy.deepcopy(cause)
+            for key in list(result):
+                if key in {"precision", "recall", "f1"} or key.startswith(
+                    ("precision_", "recall_", "f1_", "classification_")
+                ):
+                    result.pop(key)
             for key in (
                 "accuracy",
                 "validation_accuracy",
@@ -101,4 +110,21 @@ def run_matrix(jobs, execute=None):
             ):
                 blocked[model] = result
         records.append(result)
+    if records:
+        elapsed = time.perf_counter() - started
+        metadata = {
+            "benchmark_mode": "full",
+            "elapsed_scope": "full_matrix",
+            "elapsed_seconds": elapsed,
+            "total_benchmark_elapsed_seconds": elapsed,
+            "run_ids": [r["run_id"] for r in records],
+            "elapsed_note": (
+                "Matrix execution and per-run persistence; final envelope serialization excluded"
+            ),
+        }
+        root = Path(jobs[0].output_dir)
+        root.mkdir(parents=True, exist_ok=True)
+        (root / "full-benchmark.json").write_text(
+            json.dumps({"metadata": metadata, "records": records}, indent=2), encoding="utf-8"
+        )
     return records

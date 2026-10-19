@@ -270,7 +270,7 @@ def test_size_failure_metadata_and_no_preprocessing_allocation(tmp_path, monkeyp
     text = write_report("cora", str(tmp_path)).read_text(encoding="utf-8")
     assert "UNSUPPORTED_GRAPH_SIZE" in text
     displayed = CliRunner().invoke(app, ["compare", "--output-dir", str(tmp_path)])
-    assert "Failed runs" in displayed.output
+    assert "Models not completed" in displayed.output
 
 
 def test_config_error_is_saved(tmp_path):

@@ -5,12 +5,13 @@ import torch
 import torch.nn.functional as F
 
 from efficientgraphbench.profiling.runtime import synchronize
-from efficientgraphbench.training.evaluator import accuracy
+from efficientgraphbench.profiling.timing import timed
+from efficientgraphbench.training.evaluator import accuracy, classification_metrics
 
 logger = logging.getLogger(__name__)
 
 
-def train(model, data, config, device, checkpoint):
+def _train(model, data, config, device, checkpoint, timings):
     optimizer = getattr(torch.optim, config.optimizer)(
         model.parameters(), lr=config.lr, weight_decay=config.weight_decay
     )
@@ -25,23 +26,25 @@ def train(model, data, config, device, checkpoint):
     synchronize(device)
     total_start = time.perf_counter()
     for epoch in range(1, config.epochs + 1):
-        model.train()
-        synchronize(device)
-        start = time.perf_counter()
-        optimizer.zero_grad(set_to_none=True)
-        logits = model(data)
-        loss = F.cross_entropy(logits[data.train_mask], data.y[data.train_mask])
-        if not bool(torch.isfinite(loss)):
-            raise ValueError("training loss is not finite")
-        loss.backward()
-        optimizer.step()
-        synchronize(device)
+        with timed(timings, "optimization_seconds", device):
+            model.train()
+            synchronize(device)
+            start = time.perf_counter()
+            optimizer.zero_grad(set_to_none=True)
+            logits = model(data)
+            loss = F.cross_entropy(logits[data.train_mask], data.y[data.train_mask])
+            if not bool(torch.isfinite(loss)):
+                raise ValueError("training loss is not finite")
+            loss.backward()
+            optimizer.step()
+            synchronize(device)
         epoch_times.append(time.perf_counter() - start)
-        model.eval()
-        start = time.perf_counter()
-        with torch.inference_mode():
-            score = accuracy(model(data), data.y, data.val_mask)
-        synchronize(device)
+        with timed(timings, "validation_seconds", device):
+            model.eval()
+            start = time.perf_counter()
+            with torch.inference_mode():
+                score = accuracy(model(data), data.y, data.val_mask)
+            synchronize(device)
         validation_times.append(time.perf_counter() - start)
         if score > best_score:
             stale_epochs = 0
@@ -75,7 +78,7 @@ def train(model, data, config, device, checkpoint):
     model.load_state_dict(best_state)
     model.eval()
     with torch.inference_mode():
-        test_score = accuracy(model(data), data.y, data.test_mask)
+        test_metrics = classification_metrics(model(data), data.y, data.test_mask)
     synchronize(device)
     test_time = time.perf_counter() - test_start
     return {
@@ -101,12 +104,30 @@ def train(model, data, config, device, checkpoint):
         "learning_rate": config.lr,
         "weight_decay": config.weight_decay,
         "scheduler": config.scheduler,
-        "accuracy": test_score,
+        **test_metrics,
         "validation_accuracy": best_score,
         "best_epoch": best_epoch,
         "train_time_sec": total_time,
         "optimization_time_sec": sum(epoch_times),
+        "optimization_seconds": timings["optimization_seconds"],
+        "validation_seconds": timings["validation_seconds"],
+        "total_training_phase_seconds": total_time,
+        "checkpoint_save_seconds": checkpoint_time,
+        "post_adaptation_evaluation_seconds": test_time,
         "epoch_time_sec": sum(epoch_times) / len(epoch_times),
         "validation_time_sec": sum(validation_times),
         "epoch_times_sec": epoch_times,
     }
+
+
+def train(model, data, config, device, checkpoint):
+    timings = {}
+    started = time.perf_counter()
+    try:
+        return _train(model, data, config, device, checkpoint, timings)
+    except BaseException as exc:
+        exc.progressive_measurements = {
+            **timings,
+            "failed_attempt_elapsed_seconds": time.perf_counter() - started,
+        }
+        raise

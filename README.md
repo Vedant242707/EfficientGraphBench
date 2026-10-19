@@ -28,6 +28,8 @@ College GPU, OGB/heterophilous datasets, or 10–20 repeated runs? Follow [Colle
 
 ## Quick start
 
+Inspect graph structure, homophily, class balance and feature sparsity with `egbench profile --dataset cora`. See [Dataset profiling](docs/dataset_profiling.md).
+
 Export professor/report figures from saved results with `egbench plot --summary PATH/summary.csv --output-dir PATH/plots`. See [Plot saved results](docs/plots.md).
 
 ```bash
@@ -75,7 +77,7 @@ egbench environments
 egbench run --dataset cora --model graphgps --device cuda
 ```
 
-Git is also required. Setup checks pinned commits and verifies imports. The library launches the correct isolated interpreter automatically. Installation readiness is not a guarantee that a dataset fits memory. Current reproducible research installation locks support Windows x86-64 with Python 3.10 and PyTorch 1.13.1/CUDA 11.7. Other platforms can use the core models; reference setup on other platforms remains unsupported pending validation.
+Git is also required. Setup checks pinned commits and verifies imports. The library launches the correct isolated interpreter automatically. Installation readiness is not a guarantee that a dataset fits memory. Reference installation locks use Python 3.10 and PyTorch 1.13.1/CUDA 11.7 on Windows x86-64. GraphGPS additionally has a Linux x86-64 installer that requires target-server verification; automatic official SGFormer setup remains Windows-only.
 
 Downloaded environments use the platform user cache, overridable by `EGBENCH_HOME`. Existing development installations in this checkout remain usable. Installed package files are never used as a writable cache.
 
@@ -86,10 +88,9 @@ Current task: homogeneous, transductive node classification on a single graph.
 - PyG: GCN, GraphSAGE, GAT, GATv2, SGC; optional SGFormer (PyG).
 - Reference implementations: APPNP (bundled unchanged PyG citation class), GraphGPS and SGFormer (isolated official repositories).
 - Feature baseline: MLP.
-- Experimental: APPNP (Adapted), GraphGPS (Adapted), Graphormer (Adapted).
 - Official Graphormer remains visible with `UNSUPPORTED_TASK`; no validated faithful citation-node-classification adapter is claimed. `egbench models graphormer` explains this.
 
-`models="all"` selects the primary set including MLP and the Graphormer task gate. Experimental variants require explicit selection. `sgformer_reference` is an alias for the same reference implementation as `sgformer`.
+`models="all"` selects the primary set including MLP and the Graphormer task gate. The separate `sgformer_pyg` implementation requires explicit selection. `sgformer_reference` is an alias for the same reference implementation as `sgformer`.
 
 ## Datasets and custom input
 
@@ -137,3 +138,11 @@ See [docs/getting_started.md](docs/getting_started.md), [docs/architecture.md](d
 Generated results, personal notebooks, datasets and development notes are excluded from this source repository. Run the documented commands to generate results on your own machine.
 
 Linux update: GraphGPS now has a Linux x86-64 installation path; see [GraphGPS on Linux](docs/graphgps_linux.md). It requires verification on the target server. SGFormer automatic setup remains Windows-only.
+
+## Progressive graph growth (optional)
+
+Use `ProgressiveBenchmark` to resume model and optimizer state as nested graphs expand, prune using validation scores, and measure old/new-node adaptation and recovery. This is separate from static `Benchmark` and independent-size `ScalingBenchmark`.
+
+See [Progressive benchmarking](docs/progressive_benchmarking.md) for Python commands, supported adapters, temporal requirements and limitations. Terminal: `egbench progressive --config configs/progressive_texas.yaml`.
+
+For Ubuntu/CUDA setup, a short verification run, and a ten-seed PubMed run, follow [College GPU Progressive commands](docs/college_progressive.md). Official SGFormer and GraphGPS stage continuation is implemented; reference environment availability remains platform-dependent.

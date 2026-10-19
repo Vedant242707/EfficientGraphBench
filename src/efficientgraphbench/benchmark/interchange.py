@@ -21,6 +21,17 @@ def file_sha256(path):
     return digest.hexdigest()
 
 
+def canonical_array_hash(arrays):
+    digest = hashlib.sha256()
+    for key, value in sorted(arrays.items()):
+        digest.update(key.encode())
+        digest.update(str(value.dtype).encode())
+        digest.update(str(value.shape).encode())
+        if value.size:
+            digest.update(memoryview(np.ascontiguousarray(value)).cast("B"))
+    return digest.hexdigest()
+
+
 def export_graph(bundle, directory, *, cache_dir=None):
     directory = Path(directory)
     directory.mkdir(parents=True, exist_ok=True)

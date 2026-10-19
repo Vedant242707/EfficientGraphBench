@@ -3,7 +3,10 @@ import pytest
 
 pytest.importorskip("matplotlib")
 
-from efficientgraphbench.results.plots import plot_summary  # noqa: E402
+from efficientgraphbench.results.plots import (
+    plot_summary,  # noqa: E402
+    plot_training_time,  # noqa: E402
+)
 
 
 def table():
@@ -55,3 +58,25 @@ def test_rejects_mixed_configs_and_failed_only(tmp_path):
         plot_summary(pd.concat([frame, frame]), tmp_path)
     with pytest.raises(ValueError, match="No successful"):
         plot_summary(frame.iloc[1:], tmp_path)
+
+
+def test_training_curve_averages_seeds_sorts_nodes_and_excludes_oom(tmp_path):
+    rows = [
+        dict(
+            dataset="custom",
+            model="gcn",
+            status="SUCCESS",
+            num_nodes=n,
+            training_time_sec=t,
+            hardware_fingerprint="gpu1",
+        )
+        for n, t in [(200, 4), (100, 1), (200, 6)]
+    ]
+    rows.append(dict(rows[0], status="OOM", num_nodes=300, training_time_sec=99))
+    rows.append(dict(rows[0], hardware_fingerprint="gpu2", training_time_sec=20))
+    paths = plot_training_time(rows, tmp_path)
+    assert len(paths) == 2 and all(p.stat().st_size > 1000 for p in paths)
+    points = pd.read_csv(tmp_path / "nodes_vs_training_time.csv")
+    assert len(points) == 3 and points.num_nodes.max() == 200
+    assert set(points.training_time_mean_sec) == {1, 5, 20}
+    assert points.protocol.nunique() == 2

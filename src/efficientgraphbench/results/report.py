@@ -4,18 +4,20 @@ import pandas as pd
 
 from efficientgraphbench.datasets.catalog import canonical_dataset
 from efficientgraphbench.names import dataset_name, model_name
-from efficientgraphbench.results.status import failure_reason, is_success, status_of
+from efficientgraphbench.results.classification import EXPLANATION, exceptional_notes
+from efficientgraphbench.results.presentation import failure_summaries, successful_records
 from efficientgraphbench.results.writer import latest_results, read_results
 
 
 def write_report(dataset: str, output_dir: str) -> Path:
     dataset = canonical_dataset(dataset)
     records = latest_results(read_results(output_dir), dataset)
-    successful = [row for row in records if is_success(row)]
+    successful = successful_records(records)
     lines = [
         f"# {dataset_name(dataset)} benchmark report",
         "",
-        f"{len(successful)} successful runs; {len(records) - len(successful)} failed/OOM.",
+        f"{len(successful)} successful runs; "
+        f"{len(records) - len(successful)} records omitted from statistics.",
         "",
         "Accuracy is test accuracy at the best validation checkpoint. "
         "Runs use full-graph, transductive node classification. "
@@ -40,10 +42,12 @@ def write_report(dataset: str, output_dir: str) -> Path:
                     "",
                     f"Seeds: {', '.join(str(s) for s in sorted(group.seed.unique()))}.",
                     "",
-                    "| Model | Source | Runs | Accuracy mean ± SD | Preprocess s | Train s | "
+                    "| Model | Source | Runs | Accuracy mean ± SD | Precision (weighted) | "
+                    "Recall (weighted) | F1 (weighted) | Macro-F1 | Micro-F1 | "
+                    "Preprocess s | Train s | "
                     "Latency median ms | GPU allocated MiB | GPU reserved MiB | "
                     "Sampled CPU peak MiB |",
-                    "|---|---|---:|---:|---:|---:|---:|---:|---:|---:|",
+                    "|---|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|",
                 ]
             )
             for model, rows in group.groupby("model"):
@@ -60,6 +64,11 @@ def write_report(dataset: str, output_dir: str) -> Path:
                     f"| {model_name(model)} | {rows.iloc[0].get('source_type', 'legacy')} | "
                     f"{len(rows)} | "
                     f"{rows.accuracy.mean():.4f} ± {sd:.4f} | "
+                    + " | ".join(
+                        f"{rows[k].mean():.4f}" if k in rows and rows[k].notna().any() else "N/A"
+                        for k in ("precision", "recall", "f1", "f1_macro", "f1_micro")
+                    )
+                    + " | "
                     f"{prep if prep is not None else 'N/A'} | "
                     f"{rows.train_time_sec.mean():.3f} | {rows.inference_ms.mean():.3f} | "
                     f"{gpu_text} | {reserved if reserved is not None else 'N/A'} | "
@@ -82,25 +91,19 @@ def write_report(dataset: str, output_dir: str) -> Path:
                     ]
                 )
             lines.append("")
-    failures = [row for row in records if not is_success(row)]
+    lines.extend(["", *exceptional_notes(successful), "", EXPLANATION, ""])
+    failures = failure_summaries(records)
     if failures:
         lines.extend(
             [
-                "## Failed runs",
+                "## Models not completed",
                 "",
-                "| Model | Status | Nodes | Edges | Reason | Limit |",
-                "|---|---|---:|---:|---|---|",
+                "| Model | Status | Reason | Skipped | Note |",
+                "|---|---|---|---:|---|",
             ]
         )
         for row in failures:
-            values = [
-                model_name(row["model"]),
-                status_of(row),
-                row.get("num_nodes"),
-                row.get("num_edges"),
-                failure_reason(row),
-                row.get("implementation_limit"),
-            ]
+            values = [row[k] for k in ("Model", "Status", "Reason", "Skipped", "Note")]
             lines.append(
                 "| "
                 + " | ".join(str(v).replace("|", "/").replace("\n", " ") for v in values)

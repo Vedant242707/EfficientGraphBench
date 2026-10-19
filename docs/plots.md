@@ -1,5 +1,30 @@
 # Plot saved benchmark results
 
+## Number of nodes vs training time
+
+```bash
+egbench plot --runs experiments/scaling/scaling-results.json --output-dir experiments/scaling/plots
+```
+
+```python
+from efficientgraphbench.results.plots import plot_training_time
+plot_training_time("experiments/scaling/scaling-results.json", "experiments/scaling/plots")
+```
+
+Exports `nodes_vs_training_time.png`, `.pdf` and `.csv`. Each line shows measured
+training seconds against node count for one model/dataset/protocol. Repeated seeds
+are averaged with sample-SD bars; failures and skips are excluded. Distinct recorded
+hardware/recipes stay separate. Supply the complete scaling results, not the
+last-size-only summary, for a curve. A single measured size produces one point.
+Epoch budget and early stopping affect total time; scaling trains fresh induced
+subgraphs, not successive batches of the original graph. Historical records missing
+hardware/recipe identifiers cannot establish comparability; plot those separately.
+
+`plot_summary` also exports this plot when node counts and training times are present.
+For summary input, points are already aggregated; per-run SD cannot be recovered.
+
+## Accuracy, latency and memory
+
 No training or working GPU is required. Install plotting support once:
 
 ```bash

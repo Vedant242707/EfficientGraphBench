@@ -3,6 +3,9 @@
 from efficientgraphbench.version import __version__
 
 __all__ = [
+    "ProgressiveBenchmark",
+    "ProgressiveConfig",
+    "FidelityStage",
     "Benchmark",
     "ScalingBenchmark",
     "BenchmarkResult",
@@ -13,6 +16,14 @@ __all__ = [
 
 
 def __getattr__(name):
+    if name == "ProgressiveBenchmark":
+        from efficientgraphbench.progressive.controller import ProgressiveBenchmark
+
+        return ProgressiveBenchmark
+    if name in {"ProgressiveConfig", "FidelityStage"}:
+        from efficientgraphbench.progressive import config
+
+        return getattr(config, name)
     if name in {"Benchmark", "ScalingBenchmark"}:
         from efficientgraphbench.api import benchmark
 

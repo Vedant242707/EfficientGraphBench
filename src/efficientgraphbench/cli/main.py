@@ -21,13 +21,21 @@ from efficientgraphbench.models.catalog import PRIMARY_MODELS, availability, mod
 from efficientgraphbench.models.registry import MODEL_METADATA, build_model
 from efficientgraphbench.names import MODEL_NAMES, dataset_name, model_name
 from efficientgraphbench.profiling.hardware import hardware_info
+from efficientgraphbench.results.classification import EXPLANATION, exceptional_notes
+from efficientgraphbench.results.presentation import failure_summaries, successful_records
 from efficientgraphbench.results.report import write_report
-from efficientgraphbench.results.status import failure_reason, is_success, status_of
+from efficientgraphbench.results.status import failure_reason, is_success
 from efficientgraphbench.results.writer import latest_results, read_results
 
 app = typer.Typer(no_args_is_help=True, help="Hardware-aware graph model benchmarks.")
 
 console = Console()
+
+
+def print_metric_notes(records):
+    for note in exceptional_notes(records):
+        console.print("Review: " + note, style="bold yellow", markup=False)
+    console.print(EXPLANATION, markup=False)
 
 
 @app.command()
@@ -74,7 +82,18 @@ def scale(
         package_logger.propagate = previous_propagate
     summary = json.loads(result.with_name("scaling-summary.json").read_text(encoding="utf-8"))
     table = Table(title="Final result per model (nodes)")
-    for title in ("Model", "Last successful nodes", "Accuracy", "OOM nodes", "Last status"):
+    for title in (
+        "Model",
+        "Last successful nodes",
+        "Accuracy",
+        "Precision",
+        "Recall",
+        "F1",
+        "Macro-F1",
+        "Micro-F1",
+        "OOM nodes",
+        "Last status",
+    ):
         table.add_column(title)
     for model, outcome in summary["models"].items():
         success, oom = outcome["last_success"], outcome["first_oom"]
@@ -83,10 +102,23 @@ def scale(
             model_name(model),
             str(success["num_nodes"]) if success else "None",
             f"{accuracy:.4f}" if accuracy is not None else "—",
+            *[
+                f"{success['result'][k]:.4f}"
+                if success and success["result"].get(k) is not None
+                else "N/A"
+                for k in ("precision", "recall", "f1", "f1_macro", "f1_micro")
+            ],
             str(oom["num_nodes"]) if oom else "Not observed",
             outcome.get("last_status", "Not measured"),
         )
     console.print(table)
+    print_metric_notes(
+        [
+            item["last_success"]["result"]
+            for item in summary["models"].values()
+            if item["last_success"]
+        ]
+    )
     console.print(f"Saved results: {result.parent}")
 
 
@@ -355,6 +387,32 @@ def datasets():
     console.print("All use full-graph training; large graphs may exceed your machine's memory.")
 
 
+@app.command("profile")
+def profile_dataset_command(
+    dataset: str = "cora",
+    data_dir: str = "data",
+    dataset_path: Annotated[Path | None, typer.Option(exists=True)] = None,
+    split_index: int = 0,
+    output: Path | None = None,
+):
+    """Show graph, class and feature statistics without training; optionally save JSON."""
+    from efficientgraphbench.datasets import profile_dataset
+
+    try:
+        profile = profile_dataset(
+            dataset,
+            root=data_dir,
+            dataset_path=str(dataset_path) if dataset_path else None,
+            split_index=split_index,
+        )
+        console.print(str(profile), markup=False)
+        if output:
+            console.print(f"Saved: {profile.save_json(output)}")
+    except (ValueError, OSError) as exc:
+        console.print(f"[red]{exc}[/red]")
+        raise typer.Exit(1) from exc
+
+
 @app.command("inspect")
 def inspect_dataset(
     dataset: str | None = None,
@@ -511,6 +569,14 @@ def run(
         if not is_success(record):
             console.print(failure_reason(record), markup=False)
             raise typer.Exit(1)
+        console.print(
+            " | ".join(
+                f"{key}: {record[key]:.4f}"
+                for key in ("accuracy", "precision", "recall", "f1", "f1_macro", "f1_micro")
+                if record.get(key) is not None
+            )
+        )
+        print_metric_notes([record])
 
     except (ValueError, OSError) as exc:
         console.print(f"[red]{exc}[/red]")
@@ -623,11 +689,7 @@ def repeat(
         summary = results.summary()
         summary.to_csv(Path(output_dir) / "summary.csv", index=False)
         results.save_json(Path(output_dir) / "runs.json")
-        console.print(
-            summary[
-                ["model", "runs", "distinct_splits", "accuracy_mean", "accuracy_sd", "status"]
-            ].to_string(index=False)
-        )
+        results.show()
         console.print(
             f"Detailed results: {output_dir}/runs.json; summary: {output_dir}/summary.csv"
         )
@@ -640,14 +702,20 @@ def repeat(
 
 @app.command()
 def plot(
-    summary: Annotated[Path, typer.Option(exists=True)],
+    summary: Annotated[Path | None, typer.Option(exists=True)] = None,
+    runs: Annotated[Path | None, typer.Option(exists=True)] = None,
     output_dir: str = "experiments/plots",
 ):
-    """Export accuracy/latency and GPU-memory PNG/PDF charts from a summary CSV."""
-    from efficientgraphbench.results.plots import plot_summary
+    """Plot a summary CSV, or nodes vs training time from --runs scaling-results.json."""
+    from efficientgraphbench.results.plots import plot_summary, plot_training_time
 
     try:
-        for path in plot_summary(summary, output_dir):
+        if (summary is None) == (runs is None):
+            raise ValueError("Supply exactly one of --summary or --runs")
+        paths = (
+            plot_summary(summary, output_dir) if summary else plot_training_time(runs, output_dir)
+        )
+        for path in paths:
             console.print(str(path))
     except (ValueError, OSError) as exc:
         console.print(f"[red]{exc}[/red]")
@@ -669,28 +737,20 @@ def compare(dataset: str = "cora", output_dir: str = "experiments", report: bool
 
     failed = sum(not is_success(r) for r in records)
 
-    console.print(f"{len(records)} runs; {failed} failed/OOM (excluded from averages).")
+    console.print(
+        f"{len(records)} runs; {failed} failed/skipped; statistics use successful runs only."
+    )
 
-    frame = pd.DataFrame([r for r in records if is_success(r)])
+    frame = pd.DataFrame(successful_records(records))
 
-    failures = [r for r in records if not is_success(r)]
-
+    failures = failure_summaries(records)
     if failures:
-        failure_table = Table(title="Failed runs")
-
-        for heading in ("Model", "Status", "Nodes", "Edges", "Reason", "Limit"):
+        failure_table = Table(title="Models not completed", header_style="bold #163b50 on #dcebf2")
+        columns = ("Model", "Status", "Reason", "Skipped", "Note")
+        for heading in columns:
             failure_table.add_column(heading, overflow="fold")
-
         for row in failures:
-            failure_table.add_row(
-                model_name(row["model"]),
-                status_of(row),
-                str(row.get("num_nodes", "unknown")),
-                str(row.get("num_edges", "unknown")),
-                failure_reason(row),
-                str(row.get("implementation_limit") or "—"),
-            )
-
+            failure_table.add_row(*(str(row[c]) for c in columns))
         console.print(failure_table)
 
     if frame.empty:
@@ -701,7 +761,8 @@ def compare(dataset: str = "cora", output_dir: str = "experiments", report: bool
 
     for group_id, group in frame.groupby("comparison_group"):
         table = Table(
-            title=f"{dataset_name(dataset)} | {group.iloc[0]['device_name']} | {group_id}"
+            title=f"{dataset_name(dataset)} | {group.iloc[0]['device_name']} | {group_id}",
+            header_style="bold #163b50 on #dcebf2",
         )
 
         for title in (
@@ -709,6 +770,11 @@ def compare(dataset: str = "cora", output_dir: str = "experiments", report: bool
             "Source",
             "Runs",
             "Accuracy mean ± sd",
+            "Precision\nweighted",
+            "Recall\nweighted",
+            "F1\nweighted",
+            "Macro-F1",
+            "Micro-F1",
             "Prep s",
             "Train s",
             "Latency ms",
@@ -754,6 +820,10 @@ def compare(dataset: str = "cora", output_dir: str = "experiments", report: bool
                 }.get(str(rows.iloc[0].get("source_type")), "Legacy"),
                 str(len(rows)),
                 f"{rows.accuracy.mean():.4f} ± {sd:.4f}",
+                *[
+                    f"{rows[k].mean():.4f}" if k in rows and rows[k].notna().any() else "N/A"
+                    for k in ("precision", "recall", "f1", "f1_macro", "f1_micro")
+                ],
                 f"{rows.preprocessing_time_sec.mean():.3f}"
                 if "preprocessing_time_sec" in rows
                 else "N/A",
@@ -769,6 +839,7 @@ def compare(dataset: str = "cora", output_dir: str = "experiments", report: bool
             )
 
         Console(width=max(console.width, 120)).print(table)
+        print_metric_notes(group.to_dict("records"))
 
     if report:
         console.print(f"Report: {write_report(dataset, output_dir)}")
@@ -800,6 +871,97 @@ def environments():
 def report(dataset: str = "cora", output_dir: str = "experiments"):
     """Generate a Markdown report from saved benchmark results."""
     console.print(str(write_report(canonical_dataset(dataset), output_dir)))
+
+
+@app.command()
+def analyze(
+    input: Annotated[Path, typer.Option(exists=True)],
+    output_dir: str | None = None,
+    quality: str = "f1_macro",
+    memory: str = "auto",
+    include_training: bool = False,
+    minimum_quality: float = 0.0,
+    minimum_accuracy: float = 0.0,
+    maximum_latency_ms: float | None = None,
+    maximum_memory_mib: float | None = None,
+    minimum_runs: int = 1,
+    open_browser: Annotated[bool, typer.Option("--open")] = False,
+):
+    """Show metrics, selected candidates and all plots from saved results; no training."""
+    from efficientgraphbench.results.dashboard import load_analysis_results
+
+    try:
+        results = load_analysis_results(input)
+        results.show_all(
+            output_dir,
+            quality=quality,
+            memory=memory,
+            include_training=include_training,
+            minimum_quality=minimum_quality,
+            minimum_accuracy=minimum_accuracy,
+            maximum_latency_ms=maximum_latency_ms,
+            maximum_memory_mib=maximum_memory_mib,
+            minimum_runs=minimum_runs,
+            open_browser=open_browser,
+        )
+    except (ValueError, OSError) as exc:
+        console.print(str(exc), markup=False)
+        raise typer.Exit(1) from exc
+
+
+@app.command("pareto")
+def pareto_command(
+    input: Annotated[Path, typer.Option(exists=True)],
+    output: str = "experiments/pareto.json",
+    quality: str = "f1_macro",
+    memory: str = "auto",
+    include_training: bool = False,
+    minimum_quality: float = 0.0,
+    minimum_accuracy: float = 0.0,
+    maximum_latency_ms: float | None = None,
+    maximum_memory_mib: float | None = None,
+    minimum_runs: int = 1,
+):
+    """Save Pareto frontiers and objective-specific recommendations from measured runs."""
+    from efficientgraphbench.results.dashboard import load_analysis_results
+
+    try:
+        analysis = load_analysis_results(input).pareto(
+            quality=quality,
+            memory=memory,
+            include_training=include_training,
+            minimum_quality=minimum_quality,
+            minimum_accuracy=minimum_accuracy,
+            maximum_latency_ms=maximum_latency_ms,
+            maximum_memory_mib=maximum_memory_mib,
+            minimum_runs=minimum_runs,
+        )
+        path = Path(output)
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(json.dumps(analysis, indent=2, allow_nan=False), encoding="utf-8")
+        console.print_json(data=analysis)
+        console.print(f"Saved: {path}")
+    except (ValueError, OSError) as exc:
+        console.print(str(exc), markup=False)
+        raise typer.Exit(1) from exc
+
+
+@app.command("progressive")
+def progressive_command(config: Annotated[Path, typer.Option(exists=True)]):
+    """Run checkpoint-continuing graph growth from a YAML configuration."""
+    import yaml
+
+    from efficientgraphbench.progressive.controller import ProgressiveBenchmark
+
+    try:
+        options = yaml.safe_load(config.read_text(encoding="utf-8"))
+        if not isinstance(options, dict):
+            raise ValueError("Expected a YAML mapping")
+        results = ProgressiveBenchmark(**options).run()
+        results.show_all()
+    except (ValueError, TypeError, OSError) as exc:
+        console.print(str(exc), markup=False)
+        raise typer.Exit(1) from exc
 
 
 app.command("scaling")(scale)

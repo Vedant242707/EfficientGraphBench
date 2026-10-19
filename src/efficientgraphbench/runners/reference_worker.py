@@ -13,6 +13,8 @@ from types import SimpleNamespace
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "profiling"))
 sys.path.insert(0, str(ROOT / "benchmark"))
+sys.path.insert(0, str(ROOT / "training"))
+sys.path.insert(0, str(ROOT.parent))
 
 
 def graphgps(request, data, device):
@@ -231,7 +233,7 @@ def execute(request, result_path):
         import torch.nn.functional as F
         import torch_geometric
         from identity import physical_hardware
-        from interchange import file_sha256, fingerprint
+        from interchange import canonical_array_hash, file_sha256, fingerprint
         from runtime import MemoryProfiler, measure_latency, synchronize
         from torch_geometric.data import Data
 
@@ -244,7 +246,7 @@ def execute(request, result_path):
             hardware_fingerprint=hardware_hash,
             software={
                 "python": platform.python_version(),
-                "torch": torch.__version__,
+                "torch": str(torch.__version__),
                 "pyg": torch_geometric.__version__,
                 "cuda": torch.version.cuda,
             },
@@ -278,6 +280,11 @@ def execute(request, result_path):
             if file_sha256(graph_path) != request["graph_file_sha256"]:
                 raise ValueError("Canonical graph file was modified")
             with np.load(graph_path, allow_pickle=False) as arrays:
+                if (
+                    canonical_array_hash({k: arrays[k] for k in arrays.files})
+                    != request["canonical_graph_hash"]
+                ):
+                    raise ValueError("Canonical graph hash mismatch")
                 data = Data(**{key: torch.from_numpy(arrays[key].copy()) for key in arrays.files})
             splits = {
                 k: getattr(data, f"{k}_mask").nonzero().flatten().tolist()
@@ -287,6 +294,13 @@ def execute(request, result_path):
                 raise ValueError("Split hash mismatch")
             data.batch = torch.zeros(data.num_nodes, dtype=torch.long)
             profiler.mark("canonical_graph_loading_and_verification")
+            if request.get("benchmark_mode") == "progressive_multi_fidelity":
+                from efficientgraphbench.runners.progressive_worker import execute_stage
+
+                factory = graphgps if request["model_id"] == "graphgps" else sgformer
+                result.update(execute_stage(request, data, device, factory, result["software"]))
+                result.update(status="SUCCESS", benchmark_mode="progressive_multi_fidelity")
+                return
             # Official preprocessing occurs on CPU before transfer.
             factory = graphgps if request["model_id"] == "graphgps" else sgformer
             model, forward, optimizer, scheduler, settings = factory(request, data, device)
@@ -367,6 +381,9 @@ def execute(request, result_path):
                 training_time_sec=elapsed,
                 train_time_sec=elapsed,
                 optimization_time_sec=optimization,
+                optimization_seconds=optimization,
+                validation_seconds=validation,
+                total_training_phase_seconds=elapsed,
                 validation_time_sec=validation,
                 epoch_times_sec=epoch_times,
                 epoch_time_sec=optimization / epoch,
@@ -394,9 +411,9 @@ def execute(request, result_path):
             model.load_state_dict(best_state)
             model.eval()
             with torch.inference_mode():
-                result["accuracy"] = (
-                    (forward("test").argmax(-1) == data.y[data.test_mask]).float().mean().item()
-                )
+                from evaluator import classification_metrics
+
+                result.update(classification_metrics(forward("test"), data.y[data.test_mask]))
             synchronize(device)
             result["checkpoint_restore_and_test_time_sec"] = time.perf_counter() - test_start
             result["parameter_memory_mib"] = (
@@ -443,6 +460,7 @@ def execute(request, result_path):
             result.update(status="SUCCESS", failure_reason=None)
             profiler.mark("inference_warmup_and_measurement")
     except Exception as exc:
+        result.update(getattr(exc, "progressive_measurements", {}))
         traceback.print_exc()
         message = f"{type(exc).__name__}: {exc}"
         if isinstance(exc, (ImportError, ModuleNotFoundError)) or stage == "dependencies":
@@ -455,7 +473,7 @@ def execute(request, result_path):
             status = "RUNTIME_ERROR"
         result.update(status=status, failure_reason=message, error=message, failure_stage=stage)
     finally:
-        if profiler is not None:
+        if profiler is not None and request.get("benchmark_mode") != "progressive_multi_fidelity":
             result.update(profiler.metrics())
         result_path.write_text(json.dumps(result, indent=2, allow_nan=False), encoding="utf-8")
 

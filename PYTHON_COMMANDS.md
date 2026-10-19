@@ -1,12 +1,15 @@
 # EfficientGraphBench — notebook guide
 
+Dataset statistics: `from efficientgraphbench.datasets import profile_dataset`, then `print(profile_dataset("cora"))`. See [Dataset profiling](docs/dataset_profiling.md).
+
 Need accuracy/latency and GPU memory charts? See [Plot saved results](docs/plots.md). No retraining is required.
 
 **Already installed? Start at Step 1. You do not need to run every example in this file.**
 
 **College GPU / professor's experiments:** see [the short college guide](docs/college_experiments.md). Use `runs=10` or `runs=20` instead of `seeds=[...]`; use `splits="official"` to cycle heterophilous folds or `splits="random"` for new 60/20/20 splits.
 
-Choose the notebook kernel **EfficientGraphBench (CUDA GPU)**.
+Choose the notebook kernel using the project's Python environment. Restart it after
+updating the code. `device="auto"` uses CUDA when available, otherwise CPU.
 
 ## 1. Import the library
 
@@ -18,15 +21,17 @@ from efficientgraphbench import Benchmark
 
 ## 2. Run your test
 
-This tests all primary models on Cora using your GPU:
+Start with this small local test:
 
 ```python
 results = Benchmark(
-    dataset="cora",
-    models="all",
-    device="cuda",
-    epochs=200,
+    dataset="texas",
+    models=["gcn", "mlp"],
+    device="auto",
+    epochs=20,
     seeds=[1, 2, 3],
+    splits="official",
+    output_dir="experiments/local-texas",
 ).run()
 ```
 
@@ -42,17 +47,36 @@ results = Benchmark(
 
 ## 3. See the results
 
-Run this after Step 2. `display` renders a table in Jupyter:
+Run this after Step 2 to see metrics, notes, recommendations and charts together:
 
 ```python
-from IPython.display import display
-
-display(results.summary()[["model", "runs", "accuracy_mean", "status"]])
+report = results.show_all()
 ```
 
 - `runs`: number of successful runs.
 - `accuracy_mean`: average accuracy; `0.81` means **81%**.
 - `status`: `SUCCESS`, a failure reason category, or skipped runs.
+
+The report is also saved at `experiments/local-texas/analysis/analysis.html`.
+For just the formatted tables use `results.show()`; for just Pareto analysis use
+`analysis = results.pareto()`. Separate plotting commands remain available.
+
+To display saved results without running training again:
+
+```python
+from efficientgraphbench.results.dashboard import load_analysis_results
+
+results = load_analysis_results("experiments/local-texas")
+report = results.show_all()
+```
+
+Terminal equivalent (PowerShell on your PC):
+
+```powershell
+egbench analyze --input experiments/local-texas --open
+```
+
+On SSH omit `--open`, then copy the HTML report to your laptop to view the charts.
 
 **That is the basic workflow: import → run → view.** The examples below are optional.
 
@@ -228,3 +252,97 @@ Reference setup currently supports Windows x86-64.
 Need advanced settings, provenance, JSONL exports, or terminal commands? Open [PYTHON_API_REFERENCE.md](PYTHON_API_REFERENCE.md). It contains the complete reference; this guide covers everyday notebook use.
 
 Linux update: GraphGPS now has a Linux x86-64 installation path; see [GraphGPS on Linux](docs/graphgps_linux.md). It requires verification on the target server. SGFormer automatic setup remains Windows-only.
+## Classification metrics and node-count plots
+
+**Everything together:** `report = results.show_all()` displays metrics, notes,
+all-model statistics, Pareto recommendations and available charts. See [Pareto and combined results](docs/pareto_and_analysis.md)
+for the terminal command, reloading saved runs and optional constraints.
+
+After running a benchmark, show its table, unusual results and the short macro/micro note:
+
+```python
+results.show()
+```
+
+This displays separate classification and performance tables in notebooks and
+terminals. Scores use percentages, times show their units, missing values use a
+dash, and unusual results are marked with `*` and explained below the tables.
+`results.summary()` remains the numeric DataFrame for analysis and CSV exports.
+
+The table includes Accuracy, support-weighted Precision/Recall/F1, Macro-F1 and Micro-F1.
+Macro gives every evaluated class equal weight. Micro pools predictions; for these
+single-label tasks its precision, recall and F1 equal accuracy. Notes require at least five distinct runs and a pattern in at least 80% of eligible runs. A persistent Macro-F1/Micro-F1 gap must be at least 15 percentage points with at least 100 test nodes per run. Zero recall requires at least 20 test examples of that class per run. These are descriptive screening rules, not significance tests; scores remain visible even when support is too small for a note.
+
+```python
+# All averages, including macro/micro precision and recall:
+display(results.summary(detailed=True))
+print(results.metric_notes())
+
+# Plot every measured size from a scaling experiment:
+from efficientgraphbench.results.plots import plot_training_time
+plot_training_time("experiments/scaling/scaling-results.json", "experiments/scaling/plots")
+```
+
+Terminal equivalent:
+
+```bash
+egbench plot --runs experiments/scaling/scaling-results.json --output-dir experiments/scaling/plots
+```
+
+The line plot uses nodes on the x-axis and training seconds on the y-axis, averages
+successful seeds at each size and excludes failed runs. Use the full
+`scaling-results.json`, because the returned scaling table contains only the final
+result for each model. Existing result files lack the new classification metrics;
+rerun tests to calculate them. Metrics are not inferred from old accuracy values.
+
+
+## Progressive training as the graph grows
+
+```python
+from efficientgraphbench import ProgressiveBenchmark
+
+results = ProgressiveBenchmark(
+    dataset="texas", models=["gcn", "graphsage", "mlp"], seeds=[1, 2, 3],
+    device="auto", output_dir="experiments/progressive-texas",
+    progressive={
+        "progression_seed": 42, "selection_metric": "val_f1_macro", "min_candidates": 2,
+        "stages": [
+            {"name": "initial", "graph_fraction": 0.5, "additional_epochs": 10,
+             "retain_fraction": 0.7},
+            {"name": "full", "graph_fraction": 1.0, "additional_epochs": 20},
+        ],
+    },
+).run()
+results.show_all()
+```
+
+Each surviving model resumes its own weights and optimizer at the next size. See [the progressive guide](docs/progressive_benchmarking.md) for stage settings, capability limits and saved evidence. Ordinary benchmarks remain unchanged. Official SGFormer and GraphGPS now support progressive checkpoint continuation through their installed reference environments. Graphormer remains unsupported; `sgformer_pyg` remains a separate identity.
+
+
+### Progressive GNNs and official transformers
+
+```python
+from efficientgraphbench import ProgressiveBenchmark
+
+results = ProgressiveBenchmark(
+    "texas", models=["gcn", "graphsage", "sgformer", "graphgps"],
+    seeds=[1, 2, 3], device="auto",
+    output_dir="experiments/progressive-transformers",
+    progressive={
+        "progression_strategy": "deterministic_nested",
+        "selection_metric": "val_f1_macro",
+        "min_candidates": 2,
+        "stages": [
+            {"name": "initial", "graph_fraction": 0.5, "additional_epochs": 10, "retain_fraction": 0.7},
+            {"name": "full", "graph_fraction": 1.0, "additional_epochs": 20},
+        ],
+    },
+).run()
+results.show_all()
+```
+
+Official transformers require `egbench setup sgformer` and `egbench setup graphgps` first. Existing platform restrictions still apply; automatic SGFormer setup currently targets Windows. To print the report, open the returned HTML in a browser, choose Print, enable background graphics, and save as PDF in portrait orientation.
+
+For a measured comparison, explicitly run Full separately with the same models/seeds and `epochs=30`; then set `full_baseline` inside `progressive` to that Full experiment directory. This compares different learning protocols; it does not make their training exposure identical.
+
+For the college Ubuntu GPU, follow [the SSH update and Progressive run instructions](docs/college_progressive.md). Ready-to-run configurations are `configs/college_progressive_smoke.yaml` (short Texas CUDA check), `configs/college_progressive_pubmed.yaml` (10 seeds), and `configs/college_progressive_graphgps.yaml` (official GraphGPS Linux verification). They run with `egbench progressive --config <file>`.

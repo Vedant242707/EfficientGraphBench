@@ -3,6 +3,7 @@ from pathlib import Path
 
 import pandas as pd
 
+from efficientgraphbench.results.protocol import validate_full_records
 from efficientgraphbench.results.schema import normalize_record
 from efficientgraphbench.results.status import is_success
 
@@ -20,6 +21,7 @@ def read_results(output_dir: str | Path):
             records.append(record)
         except (ValueError, TypeError) as exc:
             raise ValueError(f"corrupt result at {path}:{number}: {exc}") from exc
+    validate_full_records(records)
     return records
 
 
@@ -43,6 +45,7 @@ def latest_results(records, dataset):
 
 def replace_results(records, output_dir):
     """Replace active result tables; preserve historical logs and checkpoints."""
+    validate_full_records(records)
     root = Path(output_dir) / "raw"
     root.mkdir(parents=True, exist_ok=True)
     previous = read_results(output_dir)
