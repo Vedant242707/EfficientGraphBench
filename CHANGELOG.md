@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Download Cora, CiteSeer and PubMed directly from the upstream raw-content host to avoid GitHub response-header size errors, preserving PyG processing and splits.
+
 - Add Progressive Multi-Fidelity with nested graph growth, checkpoint continuation, validation-only pruning, adaptation/recovery measurements and explicit Full-baseline compatibility.
 - Add tested official SGFormer/GraphGPS reference-worker continuation; preserve SGFormer PyG as a separate identity and Graphormer's unsupported task status.
 - Separate optimization/evaluation timing, validate protocol and seed coverage, and retain failed-attempt evidence.

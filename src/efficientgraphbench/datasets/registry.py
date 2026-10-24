@@ -9,7 +9,6 @@ from torch_geometric.datasets import (
     Amazon,
     Coauthor,
     HeterophilousGraphDataset,
-    Planetoid,
     WebKB,
     WikiCS,
 )
@@ -18,6 +17,7 @@ from torch_geometric.utils import to_undirected
 
 from efficientgraphbench.datasets.catalog import DATASETS, canonical_dataset
 from efficientgraphbench.datasets.custom import load_custom
+from efficientgraphbench.datasets.download import DirectPlanetoid as Planetoid
 from efficientgraphbench.datasets.download import ReliableFlickr as Flickr
 from efficientgraphbench.datasets.validation import (
     graph_fingerprint,

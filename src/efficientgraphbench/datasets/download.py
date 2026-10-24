@@ -15,7 +15,17 @@ from rich.progress import (
     TimeElapsedColumn,
     TransferSpeedColumn,
 )
-from torch_geometric.datasets import Flickr
+from torch_geometric.datasets import Flickr, Planetoid
+
+
+class DirectPlanetoid(Planetoid):
+    """Use the same upstream files without GitHub's HTML/redirect headers.
+
+    Keep PyG processing, public splits and existing cache paths unchanged.
+    The github.com/raw endpoint can exceed aiohttp's HTTP-header size limit.
+    """
+
+    url = "https://raw.githubusercontent.com/kimiyoung/planetoid/master/data"
 
 
 def validate_download(path):
