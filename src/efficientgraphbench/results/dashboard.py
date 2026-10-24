@@ -470,11 +470,13 @@ def show_all(results, output_dir=None, *, display=True, open_browser=False, **op
         "<title>EfficientGraphBench analysis</title>"
     )
     from efficientgraphbench.results.theme import dark_css
+
     css += dark_css(".egb-analysis")
     fragment = f'<style>{css}</style><div class="egb-analysis">' + "\n".join(sections) + "</div>"
     document += "</head><body>" + fragment + "</body></html>"
     report = output / "analysis.html"
     report.write_text(document, encoding="utf-8")
+    notebook = False
     if display:
         try:
             from IPython import get_ipython
@@ -544,7 +546,15 @@ def show_all(results, output_dir=None, *, display=True, open_browser=False, **op
         import webbrowser
 
         webbrowser.open(report.resolve().as_uri())
-    return {"report": report, "pareto": analysis, "plots": chart_paths, "notices": notices}
+    from efficientgraphbench.results.artifact import ReportOutput
+
+    return ReportOutput(
+        report=report,
+        pareto=analysis,
+        plots=chart_paths,
+        notices=notices,
+        notebook_displayed=notebook,
+    )
 
 
 def plot_pareto(group, output_dir):

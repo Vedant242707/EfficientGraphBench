@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Keep `show_all()` notebook output focused on the formatted report; suppress the duplicate raw return-value dictionary while preserving programmatic access to report paths and analysis.
+
 - Download Cora, CiteSeer and PubMed directly from the upstream raw-content host to avoid GitHub response-header size errors, preserving PyG processing and splits.
 
 - Add Progressive Multi-Fidelity with nested graph growth, checkpoint continuation, validation-only pruning, adaptation/recovery measurements and explicit Full-baseline compatibility.
