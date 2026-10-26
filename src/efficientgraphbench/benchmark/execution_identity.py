@@ -7,6 +7,7 @@ from functools import lru_cache
 from pathlib import Path
 
 from efficientgraphbench.benchmark.interchange import file_sha256, fingerprint
+from efficientgraphbench.profiling.events import observed
 
 TIMING_REVISION = "disjoint-optimization-evaluation-v2"
 
@@ -62,6 +63,7 @@ def runtime_versions(python=None):
     )
 
 
+@observed("environment_verification")
 def execution_identity(config, graph, hardware, spec):
     recipe = config.to_dict() if hasattr(config, "to_dict") else config
     material = {
@@ -70,6 +72,7 @@ def execution_identity(config, graph, hardware, spec):
             "model",
             "training",
             "model_options",
+            "profiling",
             "threads",
             "split_mode",
             "split_index",

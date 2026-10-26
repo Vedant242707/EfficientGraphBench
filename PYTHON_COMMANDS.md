@@ -1,5 +1,10 @@
 # EfficientGraphBench — notebook guide
 
+**Execution timing and selected-epoch profiling:** see [Execution Analysis](docs/execution_analysis.md).
+Add `profiling={"level": "detailed", "epochs": [1, 10]}` to either benchmark, then
+call `results.execution_analysis()`. Omit it for lightweight accounting, or use
+`profiling={"level": "none"}` for an uninstrumented control.
+
 Dataset statistics: `from efficientgraphbench.datasets import profile_dataset`, then `print(profile_dataset("cora"))`. See [Dataset profiling](docs/dataset_profiling.md).
 
 Need accuracy/latency and GPU memory charts? See [Plot saved results](docs/plots.md). No retraining is required.

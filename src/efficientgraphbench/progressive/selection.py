@@ -3,7 +3,10 @@
 import math
 from statistics import mean, stdev
 
+from efficientgraphbench.profiling.events import observed
 
+
+@observed("candidate_selection")
 def select_candidates(
     records: list[dict],
     stage,

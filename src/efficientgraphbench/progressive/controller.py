@@ -16,6 +16,7 @@ from efficientgraphbench.benchmark.interchange import file_sha256
 from efficientgraphbench.benchmark.runner import resolve_device
 from efficientgraphbench.datasets.registry import DatasetBundle, load_dataset
 from efficientgraphbench.models.catalog import PRIMARY_MODELS, model_spec
+from efficientgraphbench.profiling.events import lifecycle
 from efficientgraphbench.progressive.baseline import compute_accounting, load_full_baseline
 from efficientgraphbench.progressive.capabilities import progressive_capabilities
 from efficientgraphbench.progressive.config import ProgressiveConfig
@@ -65,6 +66,7 @@ class ProgressiveBenchmark:
                     )
                 self.configs[model, seed] = cfg
 
+    @lifecycle("progressive_multi_fidelity")
     def run(self) -> ProgressiveResults:
         started = time.perf_counter()
         base = self.configs[self.models[0], self.seeds[0]]

@@ -3,9 +3,22 @@
 import time
 from contextlib import contextmanager
 
+from efficientgraphbench.profiling.events import span
+
 
 @contextmanager
 def timed(totals: dict, key: str, device):
+    with span(
+        key,
+        device=str(device),
+        synchronization="phase-boundary CUDA sync" if device.type == "cuda" else "CPU completion",
+    ):
+        with _timed(totals, key, device):
+            yield
+
+
+@contextmanager
+def _timed(totals: dict, key: str, device):
     import torch
 
     if device.type == "cuda":

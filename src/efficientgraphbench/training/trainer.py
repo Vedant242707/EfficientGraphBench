@@ -4,6 +4,9 @@ import time
 import torch
 import torch.nn.functional as F
 
+from efficientgraphbench.profiling.detail import epoch as execution_epoch  # noqa: E402
+from efficientgraphbench.profiling.detail import operation
+from efficientgraphbench.profiling.events import observed, span
 from efficientgraphbench.profiling.runtime import synchronize
 from efficientgraphbench.profiling.timing import timed
 from efficientgraphbench.training.evaluator import accuracy, classification_metrics
@@ -26,60 +29,72 @@ def _train(model, data, config, device, checkpoint, timings):
     synchronize(device)
     total_start = time.perf_counter()
     for epoch in range(1, config.epochs + 1):
-        with timed(timings, "optimization_seconds", device):
-            model.train()
-            synchronize(device)
-            start = time.perf_counter()
-            optimizer.zero_grad(set_to_none=True)
-            logits = model(data)
-            loss = F.cross_entropy(logits[data.train_mask], data.y[data.train_mask])
-            if not bool(torch.isfinite(loss)):
-                raise ValueError("training loss is not finite")
-            loss.backward()
-            optimizer.step()
-            synchronize(device)
-        epoch_times.append(time.perf_counter() - start)
-        with timed(timings, "validation_seconds", device):
-            model.eval()
-            start = time.perf_counter()
-            with torch.inference_mode():
-                score = accuracy(model(data), data.y, data.val_mask)
-            synchronize(device)
-        validation_times.append(time.perf_counter() - start)
-        if score > best_score:
-            stale_epochs = 0
-            best_score, best_epoch = score, epoch
-            best_state = {k: v.detach().cpu().clone() for k, v in model.state_dict().items()}
-        else:
-            stale_epochs += 1
-        if scheduler is not None:
-            scheduler.step()
-        if epoch == 1 or epoch % 25 == 0 or epoch == config.epochs:
-            logger.info("epoch=%d loss=%.4f val_accuracy=%.4f", epoch, loss.item(), score)
-        if (
-            config.early_stopping_patience is not None
-            and stale_epochs >= config.early_stopping_patience
-        ):
-            termination = "early_stopping"
-            break
+        with execution_epoch(epoch, device):
+            with timed(timings, "optimization_seconds", device):
+                model.train()
+                synchronize(device)
+                start = time.perf_counter()
+                with operation("zero_gradients"):
+                    optimizer.zero_grad(set_to_none=True)
+                with operation("training_forward"):
+                    logits = model(data)
+                with operation("loss_calculation"):
+                    loss = F.cross_entropy(logits[data.train_mask], data.y[data.train_mask])
+                if not bool(torch.isfinite(loss)):
+                    raise ValueError("training loss is not finite")
+                with operation("training_backward"):
+                    loss.backward()
+                with operation("optimizer_step"):
+                    optimizer.step()
+                synchronize(device)
+            epoch_times.append(time.perf_counter() - start)
+            with timed(timings, "validation_seconds", device):
+                model.eval()
+                start = time.perf_counter()
+                with torch.inference_mode():
+                    score = accuracy(model(data), data.y, data.val_mask)
+                synchronize(device)
+            validation_times.append(time.perf_counter() - start)
+            if score > best_score:
+                stale_epochs = 0
+                best_score, best_epoch = score, epoch
+                best_state = {k: v.detach().cpu().clone() for k, v in model.state_dict().items()}
+            else:
+                stale_epochs += 1
+            if scheduler is not None:
+                with operation("scheduler_step"):
+                    scheduler.step()
+            if epoch == 1 or epoch % 25 == 0 or epoch == config.epochs:
+                logger.info("epoch=%d loss=%.4f val_accuracy=%.4f", epoch, loss.item(), score)
+            if (
+                config.early_stopping_patience is not None
+                and stale_epochs >= config.early_stopping_patience
+            ):
+                termination = "early_stopping"
+                break
     synchronize(device)
     total_time = time.perf_counter() - total_start
     checkpoint_start = time.perf_counter()
-    torch.save(
-        {
-            "model_state_dict": best_state,
-            "best_epoch": best_epoch,
-            "validation_accuracy": best_score,
-        },
-        checkpoint,
-    )
+    with span("checkpoint_save"):
+        torch.save(
+            {
+                "model_state_dict": best_state,
+                "best_epoch": best_epoch,
+                "validation_accuracy": best_score,
+            },
+            checkpoint,
+        )
     checkpoint_time = time.perf_counter() - checkpoint_start
     test_start = time.perf_counter()
-    model.load_state_dict(best_state)
-    model.eval()
-    with torch.inference_mode():
-        test_metrics = classification_metrics(model(data), data.y, data.test_mask)
-    synchronize(device)
+    with span(
+        "checkpoint_restore_and_test",
+        synchronization="existing device completion boundary (CUDA sync only on CUDA)",
+    ):
+        model.load_state_dict(best_state)
+        model.eval()
+        with torch.inference_mode():
+            test_metrics = classification_metrics(model(data), data.y, data.test_mask)
+        synchronize(device)
     test_time = time.perf_counter() - test_start
     return {
         "checkpoint_write_time_sec": checkpoint_time,
@@ -120,6 +135,7 @@ def _train(model, data, config, device, checkpoint, timings):
     }
 
 
+@observed("training")
 def train(model, data, config, device, checkpoint):
     timings = {}
     started = time.perf_counter()

@@ -23,6 +23,7 @@ from efficientgraphbench.models.catalog import ROOT, model_spec
 from efficientgraphbench.models.registry import MODEL_METADATA, build_model
 from efficientgraphbench.names import dataset_name, model_name
 from efficientgraphbench.paths import CHECKOUT, PACKAGE, WORKER, environment_dir
+from efficientgraphbench.profiling.events import CURRENT, attempt, observed, span
 from efficientgraphbench.profiling.hardware import hardware_info
 from efficientgraphbench.profiling.runtime import MemoryProfiler, measure_latency, synchronize
 from efficientgraphbench.results.status import UnsupportedGraphSize
@@ -34,12 +35,14 @@ from efficientgraphbench.version import __version__
 logger = logging.getLogger(__name__)
 
 
+@observed("device_initialization")
 def resolve_device(requested):
     if requested == "cuda" and not torch.cuda.is_available():
         raise ValueError("CUDA requested but unavailable; use --device cpu or auto")
     return torch.device("cuda" if requested != "cpu" and torch.cuda.is_available() else "cpu")
 
 
+@attempt("full")
 def run_benchmark(config):
     try:
         config.validate()
@@ -48,7 +51,7 @@ def run_benchmark(config):
         record = {
             "schema_version": 4,
             "benchmark_mode": "full",
-            "run_id": uuid.uuid4().hex,
+            "run_id": getattr(config, "_execution_run_id", uuid.uuid4().hex),
             "batch_id": getattr(config, "_result_batch", None),
             "dataset": config.dataset,
             "model": config.model.name,
@@ -66,13 +69,19 @@ def run_benchmark(config):
             "comparison_group": "configuration-error",
             "device": config.device,
         }
-        write_result(record, config.output_dir)
+        if CURRENT.get() and CURRENT.get().identity.get("role") == "attempt":
+            CURRENT.get().result = record
+        else:
+            write_result(record, config.output_dir)
         return record
     return InProcessRunner(_run_validated).run(config)
 
 
 def _run_validated(config):
     device = resolve_device(config.device)
+    if CURRENT.get() and CURRENT.get().identity.get("role") == "attempt":
+        CURRENT.get().identity["device"] = str(device)
+        CURRENT.get().stack[0]["device"] = str(device)
     torch.set_num_threads(config.threads)
     from threadpoolctl import threadpool_limits
 
@@ -85,6 +94,7 @@ def _run_validated(config):
         f"{datetime.now(timezone.utc):%Y%m%dT%H%M%S}-{config.dataset}-"
         f"{config.model.name}-seed{config.seed}-{uuid.uuid4().hex[:8]}"
     )
+    run_id = getattr(config, "_execution_run_id", run_id)
     config_path = root / "configs" / f"{run_id}.yaml"
     config_path.write_text(yaml.safe_dump(config.to_dict()), encoding="utf-8")
     comparison = config.to_dict()
@@ -170,6 +180,7 @@ def _run_validated(config):
                 "cuda": torch.version.cuda,
             },
             profiler_settings={
+                "execution_instrumentation": config.profiling,
                 "measurement_revision": "phase-snapshots-v1",
                 "warmup": config.training.latency_warmup,
                 "repeats": config.training.latency_repeats,
@@ -356,6 +367,7 @@ def _run_validated(config):
         record["status"] = "SUCCESS"
         logger.info("Completed accuracy=%.4f", record["accuracy"])
     except RunnerError as exc:
+        record.update(getattr(exc, "progressive_measurements", {}))
         record.update(
             status=exc.status, error=str(exc), failure_reason=str(exc), failure_stage=stage
         )
@@ -394,13 +406,17 @@ def _run_validated(config):
                 profiler.__exit__(None, None, None)
             record.update(profiler.metrics())
         try:
-            write_result(record, root)
+            if CURRENT.get() and CURRENT.get().identity.get("role") == "attempt":
+                CURRENT.get().result = record
+            else:
+                write_result(record, root)
         finally:
             package_logger.removeHandler(handler)
             handler.close()
             # Release this run before the next model, including failed allocations.
-            model = data = bundle = None
-            gc.collect()
-            if device.type == "cuda":
-                torch.cuda.empty_cache()
+            with span("cleanup"):
+                model = data = bundle = None
+                gc.collect()
+                if device.type == "cuda":
+                    torch.cuda.empty_cache()
     return record

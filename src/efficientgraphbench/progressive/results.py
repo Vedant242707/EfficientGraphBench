@@ -271,6 +271,13 @@ class ProgressiveResults:
 
         return pd.DataFrame(rows)
 
+    def execution_analysis(self, output_dir=None):
+        from efficientgraphbench.execution_analysis import execution_report
+
+        return execution_report(
+            self.records, output_dir or self.output_dir / "execution-analysis", self.metadata
+        )
+
     def save(self) -> Path:
 
         self.output_dir.mkdir(parents=True, exist_ok=True)
@@ -639,6 +646,9 @@ class ProgressiveResults:
         ]
 
         css = "<style>" + dark_css(".progressive") + "</style>"
+        from efficientgraphbench.execution_analysis.report import report_link
+
+        parts.append(report_link(self.records, self.output_dir, self.metadata))
         fragment = css + '<div class="progressive">' + "\n".join(parts) + "</div>"
 
         path = self.output_dir / "progressive-report.html"

@@ -43,4 +43,4 @@ extend-exclude = [".python", ".uv-cache", ".venv", "src/efficientgraphbench/reso
 select = ["E", "F", "I"]
 
 [tool.setuptools.package-data]
-efficientgraphbench = ["resources/environments/*/*", "resources/vendor/*"]
+efficientgraphbench = ["execution_analysis/*.html", "resources/environments/*/*", "resources/vendor/*"]

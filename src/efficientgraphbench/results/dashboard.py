@@ -469,8 +469,10 @@ def show_all(results, output_dir=None, *, display=True, open_browser=False, **op
         '<!doctype html><html><head><meta charset="utf-8">'
         "<title>EfficientGraphBench analysis</title>"
     )
+    from efficientgraphbench.execution_analysis.report import report_link
     from efficientgraphbench.results.theme import dark_css
 
+    sections.append(report_link(results.records, output))
     css += dark_css(".egb-analysis")
     fragment = f'<style>{css}</style><div class="egb-analysis">' + "\n".join(sections) + "</div>"
     document += "</head><body>" + fragment + "</body></html>"

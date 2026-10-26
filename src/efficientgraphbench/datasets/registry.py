@@ -24,6 +24,7 @@ from efficientgraphbench.datasets.validation import (
     stratified_masks,
     validate_graph,
 )
+from efficientgraphbench.profiling.events import observed
 
 
 @dataclass
@@ -71,6 +72,7 @@ class DatasetBundle:
         }
 
 
+@observed("dataset_loading")
 def load_dataset(
     name: str,
     root: str | Path,

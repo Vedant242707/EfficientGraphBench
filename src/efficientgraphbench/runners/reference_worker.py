@@ -17,6 +17,17 @@ sys.path.insert(0, str(ROOT / "training"))
 sys.path.insert(0, str(ROOT.parent))
 
 
+from efficientgraphbench.profiling.detail import epoch as execution_epoch  # noqa: E402
+from efficientgraphbench.profiling.detail import operation  # noqa: E402
+from efficientgraphbench.profiling.events import (  # noqa: E402
+    CURRENT,
+    EventRecorder,
+    observed,
+    span,
+)
+
+
+@observed("reference_initialization")
 def graphgps(request, data, device):
     import graphgps  # noqa: F401 - registers official encoders, layers, heads and configuration
     import torch
@@ -59,7 +70,8 @@ def graphgps(request, data, device):
             setattr(target, attr, options[key])
     if "hidden_dim" in options:
         cfg.gt.dim_hidden = cfg.gnn.dim_inner = options["hidden_dim"]
-    compute_posenc_stats(data, ["LapPE"], data.is_undirected(), cfg)
+    with span("structural_preprocessing", algorithm="official LapPE dense eigendecomposition"):
+        compute_posenc_stats(data, ["LapPE"], data.is_undirected(), cfg)
     model = GPSModel(data.num_node_features, request["num_classes"]).to(device)
     optimizer = torch.optim.AdamW(
         model.parameters(), lr=cfg.optim.base_lr, weight_decay=cfg.optim.weight_decay
@@ -104,6 +116,7 @@ def graphgps(request, data, device):
     )
 
 
+@observed("reference_initialization")
 def sgformer(request, data, device):
     import torch
     from models import GCN
@@ -210,7 +223,7 @@ def sgformer(request, data, device):
     )
 
 
-def execute(request, result_path):
+def _execute(request, result_path):
     result = {
         key: request[key]
         for key in ("run_id", "model_id", "seed", "split_hash", "canonical_graph_hash")
@@ -228,14 +241,15 @@ def execute(request, result_path):
     }
     stage, profiler = "dependencies", None
     try:
-        import numpy as np
-        import torch
-        import torch.nn.functional as F
-        import torch_geometric
-        from identity import physical_hardware
-        from interchange import canonical_array_hash, file_sha256, fingerprint
-        from runtime import MemoryProfiler, measure_latency, synchronize
-        from torch_geometric.data import Data
+        with span("dependency_imports"):
+            import numpy as np
+            import torch
+            import torch.nn.functional as F
+            import torch_geometric
+            from identity import physical_hardware
+            from interchange import canonical_array_hash, file_sha256, fingerprint
+            from runtime import MemoryProfiler, measure_latency, synchronize
+            from torch_geometric.data import Data
 
         device = torch.device(request["device"])
         if device.type == "cuda" and not torch.cuda.is_available():
@@ -276,23 +290,26 @@ def execute(request, result_path):
         with profiler:
             stage = "preprocessing"
             start = time.perf_counter()
-            graph_path = Path(request["graph_path"])
-            if file_sha256(graph_path) != request["graph_file_sha256"]:
-                raise ValueError("Canonical graph file was modified")
-            with np.load(graph_path, allow_pickle=False) as arrays:
-                if (
-                    canonical_array_hash({k: arrays[k] for k in arrays.files})
-                    != request["canonical_graph_hash"]
-                ):
-                    raise ValueError("Canonical graph hash mismatch")
-                data = Data(**{key: torch.from_numpy(arrays[key].copy()) for key in arrays.files})
-            splits = {
-                k: getattr(data, f"{k}_mask").nonzero().flatten().tolist()
-                for k in ("train", "val", "test")
-            }
-            if fingerprint(splits) != request["split_hash"]:
-                raise ValueError("Split hash mismatch")
-            data.batch = torch.zeros(data.num_nodes, dtype=torch.long)
+            with span("graph_conversion"):
+                graph_path = Path(request["graph_path"])
+                if file_sha256(graph_path) != request["graph_file_sha256"]:
+                    raise ValueError("Canonical graph file was modified")
+                with np.load(graph_path, allow_pickle=False) as arrays:
+                    if (
+                        canonical_array_hash({k: arrays[k] for k in arrays.files})
+                        != request["canonical_graph_hash"]
+                    ):
+                        raise ValueError("Canonical graph hash mismatch")
+                    data = Data(
+                        **{key: torch.from_numpy(arrays[key].copy()) for key in arrays.files}
+                    )
+                splits = {
+                    k: getattr(data, f"{k}_mask").nonzero().flatten().tolist()
+                    for k in ("train", "val", "test")
+                }
+                if fingerprint(splits) != request["split_hash"]:
+                    raise ValueError("Split hash mismatch")
+                data.batch = torch.zeros(data.num_nodes, dtype=torch.long)
             profiler.mark("canonical_graph_loading_and_verification")
             if request.get("benchmark_mode") == "progressive_multi_fidelity":
                 from efficientgraphbench.runners.progressive_worker import execute_stage
@@ -306,8 +323,9 @@ def execute(request, result_path):
             model, forward, optimizer, scheduler, settings = factory(request, data, device)
             if getattr(data, "raw_x", None) is not None:
                 del data.raw_x
-            data = data.to(device)
-            synchronize(device)
+            with span("device_transfer", synchronization="CUDA boundary"):
+                data = data.to(device)
+                synchronize(device)
             profiler.mark("model_preprocessing_initialization_and_device_transfer")
             result.update(settings)
             result["model_preprocessing_time_sec"] = time.perf_counter() - start
@@ -335,46 +353,71 @@ def execute(request, result_path):
             validation = 0.0
             epoch_times = []
             for epoch in range(1, epochs + 1):
-                step_start = time.perf_counter()
-                model.train()
-                optimizer.zero_grad(set_to_none=True)
-                logits = forward("train")
-                loss = F.cross_entropy(logits, data.y[data.train_mask])
-                if not torch.isfinite(loss):
-                    raise RuntimeError("Nonfinite training loss")
-                loss.backward()
-                if settings["clip_grad_norm"]:
-                    torch.nn.utils.clip_grad_norm_(model.parameters(), settings["clip_grad_norm"])
-                optimizer.step()
-                synchronize(device)
-                epoch_times.append(time.perf_counter() - step_start)
-                optimization += epoch_times[-1]
-                validation_start = time.perf_counter()
-                model.eval()
-                with torch.inference_mode():
-                    score = (
-                        (forward("val").argmax(-1) == data.y[data.val_mask]).float().mean().item()
-                    )
-                synchronize(device)
-                validation += time.perf_counter() - validation_start
-                if score > best:
-                    best, best_epoch = score, epoch
-                    stale_epochs = 0
-                    best_state = {
-                        k: v.detach().cpu().clone() for k, v in model.state_dict().items()
-                    }
-                else:
-                    stale_epochs += 1
-                if scheduler is not None:
-                    scheduler.step()
-                if epoch == 1 or epoch % 25 == 0 or epoch == epochs:
-                    print(
-                        f"epoch={epoch} loss={loss.item():.4f} validation={score:.4f}", flush=True
-                    )
-                patience = settings["early_stopping_patience"]
-                if patience is not None and stale_epochs >= patience:
-                    termination = "early_stopping"
-                    break
+                with execution_epoch(epoch, device):
+                    with span(
+                        "optimization_seconds",
+                        epoch=epoch,
+                        synchronization="device completion boundary; CUDA sync on CUDA",
+                    ):
+                        step_start = time.perf_counter()
+                        model.train()
+                        with operation("zero_gradients"):
+                            optimizer.zero_grad(set_to_none=True)
+                        with operation("training_forward"):
+                            logits = forward("train")
+                        with operation("loss_calculation"):
+                            loss = F.cross_entropy(logits, data.y[data.train_mask])
+                        if not torch.isfinite(loss):
+                            raise RuntimeError("Nonfinite training loss")
+                        with operation("training_backward"):
+                            loss.backward()
+                        if settings["clip_grad_norm"]:
+                            torch.nn.utils.clip_grad_norm_(
+                                model.parameters(), settings["clip_grad_norm"]
+                            )
+                        with operation("optimizer_step"):
+                            optimizer.step()
+                        synchronize(device)
+                        epoch_times.append(time.perf_counter() - step_start)
+                        optimization += epoch_times[-1]
+                    with span(
+                        "validation_seconds",
+                        epoch=epoch,
+                        synchronization="device completion boundary; CUDA sync on CUDA",
+                    ):
+                        validation_start = time.perf_counter()
+                        model.eval()
+                        with torch.inference_mode():
+                            score = (
+                                (forward("val").argmax(-1) == data.y[data.val_mask])
+                                .float()
+                                .mean()
+                                .item()
+                            )
+                        synchronize(device)
+                        validation += time.perf_counter() - validation_start
+                    if score > best:
+                        best, best_epoch = score, epoch
+                        stale_epochs = 0
+                        best_state = {
+                            k: v.detach().cpu().clone() for k, v in model.state_dict().items()
+                        }
+                    else:
+                        stale_epochs += 1
+                    if scheduler is not None:
+                        with operation("scheduler_step"):
+                            scheduler.step()
+                    if epoch == 1 or epoch % 25 == 0 or epoch == epochs:
+                        print(
+                            f"epoch={epoch} loss={loss.item():.4f} validation={score:.4f}",
+                            flush=True,
+                        )
+                    if CURRENT.get():
+                        CURRENT.get().last_completed_epoch = epoch
+                    patience = settings["early_stopping_patience"]
+                    if patience is not None and stale_epochs >= patience:
+                        termination = "early_stopping"
+                        break
             synchronize(device)
             elapsed = time.perf_counter() - start
             result.update(
@@ -397,24 +440,29 @@ def execute(request, result_path):
             checkpoint = result_path.parent / "checkpoint.pt"
             profiler.mark("training")
             checkpoint_start = time.perf_counter()
-            torch.save(
-                {
-                    "model_state_dict": best_state,
-                    "best_epoch": best_epoch,
-                    "validation_accuracy": best,
-                },
-                checkpoint,
-            )
+            with span("checkpoint_save"):
+                torch.save(
+                    {
+                        "model_state_dict": best_state,
+                        "best_epoch": best_epoch,
+                        "validation_accuracy": best,
+                    },
+                    checkpoint,
+                )
             result["checkpoint_path"] = str(checkpoint)
             result["checkpoint_write_time_sec"] = time.perf_counter() - checkpoint_start
             test_start = time.perf_counter()
-            model.load_state_dict(best_state)
-            model.eval()
-            with torch.inference_mode():
-                from evaluator import classification_metrics
+            with span(
+                "checkpoint_restore_and_test",
+                synchronization="device completion boundary; CUDA sync on CUDA",
+            ):
+                model.load_state_dict(best_state)
+                model.eval()
+                with torch.inference_mode():
+                    from evaluator import classification_metrics
 
-                result.update(classification_metrics(forward("test"), data.y[data.test_mask]))
-            synchronize(device)
+                    result.update(classification_metrics(forward("test"), data.y[data.test_mask]))
+                synchronize(device)
             result["checkpoint_restore_and_test_time_sec"] = time.perf_counter() - test_start
             result["parameter_memory_mib"] = (
                 sum(p.numel() * p.element_size() for p in model.parameters()) / 1024**2
@@ -463,10 +511,10 @@ def execute(request, result_path):
         result.update(getattr(exc, "progressive_measurements", {}))
         traceback.print_exc()
         message = f"{type(exc).__name__}: {exc}"
-        if isinstance(exc, (ImportError, ModuleNotFoundError)) or stage == "dependencies":
-            status = "DEPENDENCY_ERROR"
-        elif isinstance(exc, MemoryError) or "out of memory" in str(exc).lower():
+        if isinstance(exc, MemoryError) or "out of memory" in str(exc).lower():
             status = "OOM"
+        elif isinstance(exc, (ImportError, ModuleNotFoundError)) or stage == "dependencies":
+            status = "DEPENDENCY_ERROR"
         elif stage == "preprocessing":
             status = "PREPROCESSING_ERROR"
         else:
@@ -476,6 +524,25 @@ def execute(request, result_path):
         if profiler is not None and request.get("benchmark_mode") != "progressive_multi_fidelity":
             result.update(profiler.metrics())
         result_path.write_text(json.dumps(result, indent=2, allow_nan=False), encoding="utf-8")
+
+
+def execute(request, result_path):
+    context = request.get("execution_context")
+    if not context or context.get("options", {}).get("level") == "none":
+        return _execute(request, result_path)
+    recorder = EventRecorder(context["path"], context["identity"], context.get("options"))
+    token = CURRENT.set(recorder)
+    try:
+        with recorder.span("worker_execution") as event:
+            _execute(request, result_path)
+            result = json.loads(result_path.read_text(encoding="utf8"))
+            event["status"] = result["status"].lower()
+            event["failure_reason"] = result.get("failure_reason")
+        result["worker_execution"] = recorder.summary()
+        result_path.write_text(json.dumps(result, allow_nan=False), encoding="utf8")
+    finally:
+        recorder.close()
+        CURRENT.reset(token)
 
 
 if __name__ == "__main__":

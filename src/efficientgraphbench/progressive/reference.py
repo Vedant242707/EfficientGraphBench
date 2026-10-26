@@ -6,8 +6,10 @@ from pathlib import Path
 
 from efficientgraphbench.benchmark.execution import RepositoryRunner, RunnerError
 from efficientgraphbench.models.catalog import model_spec
+from efficientgraphbench.profiling.events import attempt
 
 
+@attempt("progressive_multi_fidelity")
 def train_reference_stage(
     config,
     progressive,

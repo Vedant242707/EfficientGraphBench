@@ -5,6 +5,7 @@ from torch_geometric.nn.models import GAT, GCN, MLP, GraphSAGE, SGFormer
 from efficientgraphbench.config import ModelConfig
 from efficientgraphbench.models.reference_appnp import build_reference_appnp
 from efficientgraphbench.names import MODEL_NAMES
+from efficientgraphbench.profiling.events import observed
 
 MODEL_METADATA = {
     "graphormer": {"family": "Graph Transformer", "task": "unsupported"},
@@ -43,6 +44,7 @@ class GraphModel(torch.nn.Module):
         return self.model(data.x, data.edge_index)
 
 
+@observed("model_initialization")
 def build_model(config: ModelConfig, in_channels: int, out_channels: int) -> GraphModel:
     common = dict(
         in_channels=in_channels, hidden_channels=config.hidden_dim, out_channels=out_channels

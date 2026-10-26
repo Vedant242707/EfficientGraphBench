@@ -12,6 +12,7 @@ from torch_geometric.utils import subgraph
 from efficientgraphbench.benchmark.interchange import export_graph, fingerprint
 from efficientgraphbench.datasets.registry import DatasetBundle
 from efficientgraphbench.datasets.validation import validate_graph
+from efficientgraphbench.profiling.events import observed
 from efficientgraphbench.progressive.config import ProgressiveConfig
 
 
@@ -83,6 +84,7 @@ class ProgressionBuilder:
                 edge_time=self.edge_times.numpy(),
             )
 
+    @observed("graph_stage_construction")
     def build(self, index: int) -> GraphStage:
         if index != self.next_index:
             raise ValueError("Graph stages must be built sequentially from stage zero")

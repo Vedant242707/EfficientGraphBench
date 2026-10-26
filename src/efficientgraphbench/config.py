@@ -49,8 +49,12 @@ class BenchmarkConfig:
     split_mode: str = "official"
     model_options: dict = field(default_factory=dict)
     worker_timeout_sec: int = 7200
+    profiling: dict = field(default_factory=dict)
 
     def validate(self):
+        from efficientgraphbench.profiling.detail import validate_options
+
+        validate_options(self.profiling)
         self.dataset = canonical_dataset(self.dataset)
         self.model.name = self.model.name.strip().lower()
         if not isinstance(self.model_options, dict):

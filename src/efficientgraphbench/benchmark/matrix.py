@@ -7,10 +7,12 @@ import uuid
 from pathlib import Path
 
 from efficientgraphbench.benchmark.runner import run_benchmark
+from efficientgraphbench.profiling.events import lifecycle, span
 from efficientgraphbench.results.status import status_of
 from efficientgraphbench.results.writer import write_result
 
 
+@lifecycle("full")
 def run_matrix(jobs, execute=None):
     started = time.perf_counter()
     execute = execute or run_benchmark
@@ -34,6 +36,8 @@ def run_matrix(jobs, execute=None):
                 ):
                     result.pop(key)
             for key in (
+                "execution",
+                "worker_execution",
                 "accuracy",
                 "validation_accuracy",
                 "training_time_sec",
@@ -89,7 +93,14 @@ def run_matrix(jobs, execute=None):
                     "graph_file_sha256",
                 ):
                     result.pop(key, None)
-            write_result(result, config.output_dir)
+            with span(
+                "skipped_attempt",
+                model=model,
+                seed=config.seed,
+                status="skipped",
+                failure_reason=result["failure_reason"],
+            ):
+                write_result(result, config.output_dir)
         else:
             result = execute(config)
             result.setdefault("run_id", uuid.uuid4().hex)

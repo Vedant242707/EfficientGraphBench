@@ -17,6 +17,9 @@ import torch.nn.functional as F
 from torch_geometric.data import Data
 
 from efficientgraphbench.benchmark.interchange import fingerprint
+from efficientgraphbench.profiling.detail import epoch as execution_epoch  # noqa: E402
+from efficientgraphbench.profiling.detail import operation
+from efficientgraphbench.profiling.events import attempt
 from efficientgraphbench.profiling.runtime import MemoryProfiler, synchronize
 from efficientgraphbench.profiling.timing import timed
 from efficientgraphbench.progressive.adaptation import RecoveryTracker, transition_metrics
@@ -123,24 +126,33 @@ def _train_stage(
         synchronize(device)
         training_start = time.perf_counter()
         for epoch in range(1, stage.additional_epochs + 1):
-            with timed(timings, "optimization_seconds", device):
-                model.train()
-                optimizer.zero_grad(set_to_none=True)
-                logits = model(data)
-                loss = F.cross_entropy(logits[data.train_mask], data.y[data.train_mask])
-                if not bool(torch.isfinite(loss)):
-                    raise ValueError("Nonfinite training loss")
-                loss.backward()
-                if settings.get("clip_grad_norm"):
-                    torch.nn.utils.clip_grad_norm_(model.parameters(), settings["clip_grad_norm"])
-                optimizer.step()
-                if scheduler:
-                    scheduler.step()
-            if parent and not recovery.recovered and bool(old.any()):
-                with timed(timings, "validation_seconds", device):
-                    score = evaluate(model, data, old, progressive.selection_metric)
-                synchronize(device)
-                recovery.observe(epoch, score, time.perf_counter() - training_start)
+            with execution_epoch(epoch, device):
+                with timed(timings, "optimization_seconds", device):
+                    model.train()
+                    with operation("zero_gradients"):
+                        optimizer.zero_grad(set_to_none=True)
+                    with operation("training_forward"):
+                        logits = model(data)
+                    with operation("loss_calculation"):
+                        loss = F.cross_entropy(logits[data.train_mask], data.y[data.train_mask])
+                    if not bool(torch.isfinite(loss)):
+                        raise ValueError("Nonfinite training loss")
+                    with operation("training_backward"):
+                        loss.backward()
+                    if settings.get("clip_grad_norm"):
+                        torch.nn.utils.clip_grad_norm_(
+                            model.parameters(), settings["clip_grad_norm"]
+                        )
+                    with operation("optimizer_step"):
+                        optimizer.step()
+                    if scheduler:
+                        with operation("scheduler_step"):
+                            scheduler.step()
+                if parent and not recovery.recovered and bool(old.any()):
+                    with timed(timings, "validation_seconds", device):
+                        score = evaluate(model, data, old, progressive.selection_metric)
+                    synchronize(device)
+                    recovery.observe(epoch, score, time.perf_counter() - training_start)
         synchronize(device)
         training_seconds = time.perf_counter() - training_start
         memory.mark("training_and_recovery_validation")
@@ -226,6 +238,7 @@ def _train_stage(
     }
 
 
+@attempt("progressive_multi_fidelity")
 def train_stage(*args, factory=None, **kwargs) -> dict:
     timings = {}
     start = time.perf_counter()

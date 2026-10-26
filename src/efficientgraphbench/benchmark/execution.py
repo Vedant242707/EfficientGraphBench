@@ -4,10 +4,13 @@ import json
 import math
 import os
 import subprocess
+import time
 from abc import ABC, abstractmethod
 from pathlib import Path
 
 import psutil
+
+from efficientgraphbench.profiling.events import CURRENT, read_journal, span
 
 STATUSES = {
     "RESOURCE_LIMIT",
@@ -52,6 +55,54 @@ class ExternalEnvironmentRunner(BaseModelRunner):
         self.timeout = timeout
 
     def run(self, request):
+        child_path = self.directory.resolve() / "execution-worker.jsonl"
+        recorder = CURRENT.get()
+        context = {
+            "path": str(child_path),
+            "options": recorder.options
+            if recorder
+            else request.get("config", {}).get("profiling", {}),
+            "identity": {
+                "role": "worker",
+                "run_id": request.get("run_id"),
+                "model": request.get("model_id"),
+                "dataset": request.get("config", {}).get("dataset"),
+                "seed": request.get("seed"),
+                "device": request.get("device"),
+                "mode": request.get("benchmark_mode", "full"),
+                "stage": (
+                    request["progressive"]["stages"][request["stage_index"]]["name"]
+                    if "progressive" in request
+                    else "full"
+                ),
+                "benchmark_id": recorder.identity.get("benchmark_id") if recorder else None,
+            },
+        }
+        started = time.perf_counter()
+        try:
+            with span("worker_attempt") as event:
+                result = self._run({**request, "execution_context": context})
+                event["status"] = result.get("status", "SUCCESS").lower()
+            result["worker_execution"] = {
+                **result.get("worker_execution", {}),
+                "events_path": str(child_path),
+                "events": read_journal(child_path),
+                "clock_alignment": "separate process clock; not aligned to controller",
+            }
+            result["worker_wall_time_sec"] = time.perf_counter() - started
+            return result
+        except BaseException as exc:
+            exc.progressive_measurements = {
+                **getattr(exc, "progressive_measurements", {}),
+                "worker_wall_time_sec": time.perf_counter() - started,
+                "worker_execution": {
+                    "events_path": str(child_path),
+                    "events": read_journal(child_path),
+                },
+            }
+            raise
+
+    def _run(self, request):
         self.directory.mkdir(parents=True, exist_ok=True)
         request_path = self.directory / "request.json"
         result_path = self.directory / "result.json"
@@ -73,31 +124,34 @@ class ExternalEnvironmentRunner(BaseModelRunner):
             ):
                 environment[key] = threads
             with (self.directory / "worker.log").open("w", encoding="utf-8") as log:
-                process = subprocess.Popen(
-                    [*self.command, str(request_path.resolve()), str(result_path.resolve())],
-                    stdout=log,
-                    stderr=subprocess.STDOUT,
-                    shell=False,
-                    env=environment,
-                )
-                try:
-                    process.wait(timeout=self.timeout)
-                except (subprocess.TimeoutExpired, KeyboardInterrupt):
-                    # Windows venv launcher may spawn the actual Python worker.
-                    # Kill the complete owned tree, not only its launcher.
+                with span(
+                    "subprocess_lifetime", timing_scope="process creation through wait/termination"
+                ):
+                    process = subprocess.Popen(
+                        [*self.command, str(request_path.resolve()), str(result_path.resolve())],
+                        stdout=log,
+                        stderr=subprocess.STDOUT,
+                        shell=False,
+                        env=environment,
+                    )
                     try:
-                        children = psutil.Process(process.pid).children(recursive=True)
-                    except psutil.NoSuchProcess:
-                        children = []
-                    for child in reversed(children):
+                        process.wait(timeout=self.timeout)
+                    except (subprocess.TimeoutExpired, KeyboardInterrupt):
+                        # Windows venv launcher may spawn the actual Python worker.
+                        # Kill the complete owned tree, not only its launcher.
                         try:
-                            child.kill()
+                            children = psutil.Process(process.pid).children(recursive=True)
                         except psutil.NoSuchProcess:
-                            pass
-                    process.kill()
-                    process.wait(timeout=10)
-                    psutil.wait_procs(children, timeout=10)
-                    raise
+                            children = []
+                        for child in reversed(children):
+                            try:
+                                child.kill()
+                            except psutil.NoSuchProcess:
+                                pass
+                        process.kill()
+                        process.wait(timeout=10)
+                        psutil.wait_procs(children, timeout=10)
+                        raise
         except FileNotFoundError as exc:
             raise RunnerError("DEPENDENCY_ERROR", str(exc)) from exc
         except subprocess.TimeoutExpired as exc:

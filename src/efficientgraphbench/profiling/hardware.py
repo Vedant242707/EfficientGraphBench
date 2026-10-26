@@ -2,7 +2,10 @@
 
 import torch
 
+from efficientgraphbench.profiling.events import observed
 
+
+@observed("hardware_discovery")
 def hardware_info():
     info = {
         "torch_version": torch.__version__,

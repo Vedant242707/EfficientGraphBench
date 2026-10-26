@@ -4,7 +4,10 @@ import hashlib
 
 import torch
 
+from efficientgraphbench.profiling.events import observed
 
+
+@observed("data_validation")
 def validate_graph(data, num_classes: int):
     if data.x is None or data.x.ndim != 2 or min(data.x.shape) < 1:
         raise ValueError("features x must have shape [nodes, features] with nonzero dimensions")
@@ -50,6 +53,7 @@ def graph_fingerprint(data) -> str:
     return digest.hexdigest()
 
 
+@observed("mask_preparation")
 def stratified_masks(labels, seed: int):
     """Per-class 60/20/20 split; model initialization seeds never change it."""
     generator = torch.Generator().manual_seed(seed)

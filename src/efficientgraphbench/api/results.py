@@ -161,6 +161,25 @@ class BenchmarkResults:
 
         return show_all(self, output_dir, **options)
 
+    def execution_analysis(self, output_dir=None):
+        """Render saved execution events without training."""
+        from efficientgraphbench.execution_analysis import execution_report
+
+        metadata = None
+        if self.output_dir:
+            envelope = Path(self.output_dir) / "full-benchmark.json"
+            if envelope.exists():
+                saved = json.loads(envelope.read_text(encoding="utf8"))
+                if sorted(r.get("run_id", "") for r in self.records) == sorted(
+                    saved.get("metadata", {}).get("run_ids", [])
+                ):
+                    metadata = saved["metadata"]
+        return execution_report(
+            self.records,
+            output_dir or Path(self.output_dir or "experiments") / "execution-analysis",
+            metadata,
+        )
+
     def _path(self, path):
         path = Path(path)
         path.parent.mkdir(parents=True, exist_ok=True)

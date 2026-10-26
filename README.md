@@ -141,6 +141,10 @@ Linux update: GraphGPS now has a Linux x86-64 installation path; see [GraphGPS o
 
 ## Progressive graph growth (optional)
 
+Optional [Execution Analysis](docs/execution_analysis.md) adds failure-safe event
+journals and an HTML explorer to both benchmark modes. Detailed profiling is
+opt-in; unsupported kernel tracing and hardware counters are explicitly disclosed.
+
 Use `ProgressiveBenchmark` to resume model and optimizer state as nested graphs expand, prune using validation scores, and measure old/new-node adaptation and recovery. This is separate from static `Benchmark` and independent-size `ScalingBenchmark`.
 
 See [Progressive benchmarking](docs/progressive_benchmarking.md) for Python commands, supported adapters, temporal requirements and limitations. Terminal: `egbench progressive --config configs/progressive_texas.yaml`.

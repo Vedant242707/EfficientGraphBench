@@ -5,6 +5,8 @@ import time
 import psutil
 import torch
 
+from efficientgraphbench.profiling.events import span
+
 
 def synchronize(device):
     if device.type == "cuda":
@@ -44,6 +46,15 @@ class MemoryProfiler:
             if cuda
             else None,
         }
+        snapshot = self.phase_snapshots[phase]
+        with span(
+            "memory_snapshot",
+            checkpoint=phase,
+            gpu_allocated_bytes=(snapshot["gpu_allocated_mib"] * 1024**2 if cuda else None),
+            gpu_reserved_bytes=(snapshot["gpu_reserved_mib"] * 1024**2 if cuda else None),
+            memory_scope="PyTorch allocator observation at existing phase boundary",
+        ):
+            pass
         self.phase_start = time.perf_counter()
 
     def sample(self):
