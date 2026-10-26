@@ -34,3 +34,30 @@ def test_explicit_display_of_undisplayed_artifact_renders_saved_report(tmp_path,
     assert DisplayFormatter().format(report) == ({}, {})
     assert len(calls) == 1
     assert calls[0].data == path.read_text(encoding="utf-8")
+
+
+def test_interactive_report_is_isolated_and_downloads_are_self_contained(tmp_path, monkeypatch):
+    import base64
+    import html
+
+    from IPython import display
+
+    from efficientgraphbench.results.artifact import InteractiveReportOutput
+
+    report_path = tmp_path / "execution.html"
+    document = '<html><script>window.ready=true</script><p title="x">Model</p></html>'
+    report_path.write_text(document, encoding="utf8")
+    data_path = tmp_path / "execution.json"
+    data_path.write_text('{"sessions": []}', encoding="utf8")
+    result = InteractiveReportOutput(report=report_path, data=data_path)
+    calls = []
+    monkeypatch.setattr(display, "display", calls.append)
+    DisplayFormatter().format(result)
+    markup = calls[0].data
+    assert '<iframe title="EfficientGraphBench execution analysis"' in markup
+    assert 'srcdoc="' + html.escape(document, quote=True) + '"' in markup
+    assert 'allow-downloads allow-modals' in markup
+    encoded_data = base64.b64encode(data_path.read_bytes()).decode()
+    assert 'data:application/json;base64,' + encoded_data in markup
+    assert 'data:text/html;base64,' + base64.b64encode(report_path.read_bytes()).decode() in markup
+    assert result["report"] == report_path

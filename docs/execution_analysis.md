@@ -82,15 +82,20 @@ report = reopen_execution("experiments/execution-texas/execution-analysis/execut
 print(report["report"])
 ```
 
-In a Jupyter notebook, open the saved page through a file link:
+In a Jupyter notebook, display the returned object (do not wrap its HTML in `HTML(...)`):
 
 ```python
 from IPython.display import FileLink, display
 display(FileLink(str(report["report"])))
 ```
 
-Use a Jupyter server rooted at the project directory so it can serve the exported
-files. Standalone HTML report links are relative to their saved report directory.
+The interactive report uses an isolated iframe so its scripts do not depend on
+Jupyter's ordinary HTML output renderer. The links above it download the HTML and
+JSON directly to your laptop; they do not depend on the notebook's folder. If
+notebook trust settings block the iframe, download the HTML and open it in your
+browser. Use its PDF button and choose **Save as PDF** in the print dialog.
+The HTML/JSON contain trace previews; keep the original `traces/` directory for
+full trace files. Reopening regenerates the page without rerunning the benchmark.
 
 Reopening does not import or train a model. Keep the export directory together when
 copying it to another computer. Open the HTML in a browser; it embeds a bounded

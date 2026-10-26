@@ -8,7 +8,7 @@ from pathlib import Path
 from efficientgraphbench.execution_analysis.comparison import device_comparisons
 from efficientgraphbench.names import model_name
 from efficientgraphbench.profiling.accounting import reconcile
-from efficientgraphbench.results.artifact import ReportOutput
+from efficientgraphbench.results.artifact import InteractiveReportOutput
 
 
 def execution_report(records, output_dir, metadata=None):
@@ -97,7 +97,7 @@ def _write(payload, output):
     document = template.replace("__EXECUTION_DATA__", json.dumps(payload).replace("<", "\\u003c"))
     report = output / "execution.html"
     report.write_text(document, encoding="utf8")
-    return ReportOutput(report=report, data=output / "execution.json")
+    return InteractiveReportOutput(report=report, data=output / "execution.json")
 
 
 def reopen_execution(path, output_dir=None):
