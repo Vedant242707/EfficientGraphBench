@@ -23,6 +23,10 @@ padding-bottom:8px;
 color:#60A5FA}
     S h3{font-size:16px;
 color:#22D3EE}S p{color:#B8C5D9}
+    S h4,S label,S summary,S pre,S li,S strong,S b{color:#E8EEF7!important}
+    S .criteria h4{color:#E8EEF7!important}
+    S a{color:#79D5FF!important}
+    S code{color:#E8EEF7!important;background:#172033!important}
     S table{width:100%;
 border-collapse:collapse;
 table-layout:auto;

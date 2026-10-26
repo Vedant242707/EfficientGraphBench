@@ -2,8 +2,26 @@
 <title>EfficientGraphBench · Execution Analysis</title>
 <style>
 :root{color-scheme:dark;font:15px/1.5 system-ui;background:#0b1020;color:#e4ebf7}body{max-width:1400px;margin:auto;padding:28px}h1{font-size:27px}h2{font-size:20px}p{color:#b5c4dd}button,select,input{background:#17233a;color:#ecf4ff;border:1px solid #536b90;border-radius:5px;padding:8px;margin:4px}button{cursor:pointer}button[aria-selected=true]{background:#155d89}a{color:#79d5ff}.panel{background:#101a2c;border:1px solid #2c405e;padding:18px;margin:16px 0;border-radius:8px}.notice{border-left:3px solid #e4b45f;padding:12px;background:#251f17;color:#ffe5b4}table{border-collapse:collapse;width:100%;font-size:13px}th,td{text-align:left;border-bottom:1px solid #30425d;padding:9px}th{color:white;background:#243958}.scroll{overflow:auto;max-height:540px}.lane{display:flex;align-items:center;gap:12px;min-width:740px;height:32px}.label{width:270px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:12px}.track{flex:1;height:20px;position:relative;background:#18243a}.bar{position:absolute;height:18px;background:#41c6d4;border-radius:2px;min-width:2px;cursor:pointer}.failed{background:#f79d6b}pre{white-space:pre-wrap;overflow-wrap:anywhere;font-size:12px}footer{font-size:13px;color:#a6bad6}.cards{display:flex;gap:24px;flex-wrap:wrap}.cards strong{display:block;font-size:24px}.hidden{display:none}#printSummary{display:none}@page{margin:12mm}@media print{:root{background:white;color-scheme:light}body{padding:0;font-size:11px}h1{font-size:21px}h2{font-size:16px}h2,h3{break-after:avoid}th,td{padding:5px;font-size:11px}#printSummary{display:block;break-inside:auto;border:0;padding:0}.panel:not(#printSummary),#notes,body>label{display:none}button,input,select,nav,.controls{display:none}body{color:#111;background:white}.panel{break-inside:avoid;color:#111;background:white}.scroll{max-height:none}th{background:#ddd;color:#111}p,footer{color:#333}}
+
+/* Explicit foregrounds prevent notebook/browser theme defaults leaking into the report. */
+@media screen {
+body{color:#e4ebf7;background:#0b1020}
+body h1,body h2,body h3,body h4,body label,body summary,body pre,
+body td,body .label,body .cards,body strong,body span{color:#e4ebf7}
+body td{background:#101a2c}body th{color:#ffffff;background:#243958}
+body p,body footer{color:#c5d2e7}body a{color:#79d5ff}
+body select,body option,body input,body button{color:#ecf4ff;background:#17233a}
+.reading-guide{background:#14253c;border:1px solid #536b90;padding:14px 18px;margin:18px 0}
+}
+@media print{.reading-guide{display:none}body td,body strong,body span,body h1,body h2,body h3{color:#111}body a{color:#135375}}
 </style>
 <h1>Execution Analysis</h1><p>EfficientGraphBench · measured execution, including unsuccessful attempts</p>
+<details class="reading-guide" open><summary><strong>Start here: how to read this report</strong></summary>
+<p>This page explains execution time and memory. Use the main benchmark report for accuracy, F1 and model comparisons.</p>
+<p><b>1. Choose a run below.</b> A seed is a repeat; a stage is a progressive training step. A controller manages the run; an official-model worker performs training in a separate process. Select the worker to see its training operations.</p>
+<p><b>2. Overview:</b> see when work happened, where measured time went and which memory samples exist. <b>Epoch Breakdown:</b> inspect one training round. <b>GPU Kernels:</b> inspect detailed traces if captured.</p>
+<p><b>3. Save selected summary as PDF:</b> exports only the selected process. Unavailable means no measurement, not zero. Overlapping timeline bars and controller/worker times must not be added together.</p>
+</details>
 <label>Run / seed / stage / process <select id="session"></select></label>
 <nav><button data-tab="overview" aria-selected="true">Overview</button><button data-tab="epochs">Epoch Breakdown</button><button data-tab="kernels">GPU Kernels</button><button id="print">Save selected summary as PDF</button></nav>
 <div id="notes" class="notice"></div><section id="overview" class="panel"></section><section id="epochs" class="panel hidden"></section><section id="kernels" class="panel hidden"></section>
