@@ -351,3 +351,23 @@ Official transformers require `egbench setup sgformer` and `egbench setup graphg
 For a measured comparison, explicitly run Full separately with the same models/seeds and `epochs=30`; then set `full_baseline` inside `progressive` to that Full experiment directory. This compares different learning protocols; it does not make their training exposure identical.
 
 For the college Ubuntu GPU, follow [the SSH update and Progressive run instructions](docs/college_progressive.md). Ready-to-run configurations are `configs/college_progressive_smoke.yaml` (short Texas CUDA check), `configs/college_progressive_pubmed.yaml` (10 seeds), and `configs/college_progressive_graphgps.yaml` (official GraphGPS Linux verification). They run with `egbench progressive --config <file>`.
+
+
+### Detailed execution capture (small CUDA verification)
+
+```python
+from efficientgraphbench import Benchmark
+
+results = Benchmark(
+    dataset="texas", models=["gcn"], seeds=[1], epochs=3, device="cuda",
+    output_dir="experiments/texas-detailed",
+    profiling={"level": "detailed", "epochs": [2],
+               "memory_sampling": {"interval_ms": 20, "max_samples": 50}},
+).run()
+results.execution_analysis()
+```
+
+Profiles epoch 2 with real operator/CUDA capture where supported. Select model,
+seed, stage and epoch in the report. Download/extract `execution-bundle.zip` to
+move the report with its full traces; HTML alone carries bounded previews.
+See `docs/execution_analysis_review.md` for measured evidence and limitations.

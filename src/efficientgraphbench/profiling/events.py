@@ -5,6 +5,7 @@ import functools
 import json
 import os
 import sys
+import threading
 import time
 import uuid
 from contextlib import contextmanager, nullcontext
@@ -50,11 +51,15 @@ class EventRecorder:
         self.last_completed_epoch = None
         self.artifacts = []
         self.notes = []
+        self.profile_attempts = []
+        self.memory_samples = []
+        self.write_lock = threading.Lock()
         self.handle = self.path.open("a", encoding="utf8")
 
     def emit(self, value):
-        self.handle.write(json.dumps(value, allow_nan=False) + "\n")
-        self.handle.flush()
+        with self.write_lock:
+            self.handle.write(json.dumps(value, allow_nan=False) + "\n")
+            self.handle.flush()
 
     @contextmanager
     def span(self, phase, **attributes):
@@ -112,6 +117,8 @@ class EventRecorder:
             "instrumentation": self.options,
             "overhead": "Included in measured durations; no per-workload calibration applied",
             "traces": self.artifacts,
+            "profile_attempts": self.profile_attempts,
+            "memory_samples": self.memory_samples,
             "notes": self.notes,
             "scope": "process-local; nested spans inclusive; excludes final result serialization",
         }
@@ -153,6 +160,20 @@ def read_journal(path):
             row.update(status="incomplete", end_offset_ns=None, duration_ns=None)
         events[row["event_id"]] = row
     return list(events.values())
+
+
+def read_memory_samples(path):
+    if not Path(path).exists():
+        return []
+    samples = []
+    for line in Path(path).read_text(encoding="utf8", errors="replace").splitlines():
+        try:
+            row = json.loads(line)
+            if row.get("record_type") == "memory_sample":
+                samples.append(row)
+        except (ValueError, AttributeError):
+            continue
+    return samples
 
 
 def attempt(mode):

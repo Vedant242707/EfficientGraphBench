@@ -25,6 +25,7 @@ from efficientgraphbench.profiling.events import (  # noqa: E402
     observed,
     span,
 )
+from efficientgraphbench.profiling.sampling import sample_memory  # noqa: E402
 
 
 @observed("reference_initialization")
@@ -508,6 +509,9 @@ def _execute(request, result_path):
             result.update(status="SUCCESS", failure_reason=None)
             profiler.mark("inference_warmup_and_measurement")
     except Exception as exc:
+        snapshot = getattr(CURRENT.get(), "memory_failure_snapshot", None)
+        if snapshot:
+            snapshot()  # Observe before result handling/cleanup; no CUDA synchronization.
         result.update(getattr(exc, "progressive_measurements", {}))
         traceback.print_exc()
         message = f"{type(exc).__name__}: {exc}"
@@ -534,8 +538,13 @@ def execute(request, result_path):
     token = CURRENT.set(recorder)
     try:
         with recorder.span("worker_execution") as event:
-            _execute(request, result_path)
-            result = json.loads(result_path.read_text(encoding="utf8"))
+            with sample_memory(recorder, request.get("device", "cpu"), "reference worker"):
+                _execute(request, result_path)
+                result = json.loads(result_path.read_text(encoding="utf8"))
+                if result["status"] != "SUCCESS":
+                    snapshot = getattr(recorder, "memory_failure_snapshot", None)
+                    if snapshot:
+                        snapshot()
             event["status"] = result["status"].lower()
             event["failure_reason"] = result.get("failure_reason")
         result["worker_execution"] = recorder.summary()

@@ -2,6 +2,11 @@
 
 Branch: `codex/execution-analysis`. Main is intentionally unchanged.
 
+This is the initial delivery record. The [subsequent execution review](execution_analysis_review.md)
+records successful real CUDA kernel capture on the current local installation,
+new navigation, memory sampling and portable trace validation. It supersedes the
+initial no-kernel limitation below only for the newly tested environment/runs.
+
 ## Phase results
 
 | Phase | Delivered | Verification |

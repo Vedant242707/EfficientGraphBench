@@ -1,0 +1,204 @@
+{
+  "hardware": "NVIDIA GeForce RTX 4050 Laptop GPU",
+  "torch": "2.14.0+cu130",
+  "cuda_build": "13.0",
+  "profiling": {
+    "level": "detailed",
+    "epochs": [
+      2
+    ],
+    "memory_sampling": {
+      "interval_ms": 20,
+      "max_samples": 50
+    }
+  },
+  "source_report_sha256": "8e9f121a01b111ca39f065c4c74bf7ab67117fb253bbe70b0db388e9361e84ba",
+  "source_sessions": 101,
+  "source_instrumentation": {},
+  "source_traces": 0,
+  "runs": [
+    {
+      "mode": "full",
+      "seed": 1,
+      "stage_index": null,
+      "status": "SUCCESS",
+      "parent_checkpoint_id": null,
+      "checkpoint_id": null,
+      "memory_sample_count": 3,
+      "operations": [
+        {
+          "phase": "training_forward",
+          "duration_ns": 8817700,
+          "cuda_elapsed_ms": 8.83296012878418,
+          "timing_scope": "Host call wall; asynchronous dispatch on CUDA; CUDA duration separate"
+        },
+        {
+          "phase": "loss_calculation",
+          "duration_ns": 1365900,
+          "cuda_elapsed_ms": 1.3668800592422485,
+          "timing_scope": "Host call wall; asynchronous dispatch on CUDA; CUDA duration separate"
+        },
+        {
+          "phase": "training_backward",
+          "duration_ns": 14741300,
+          "cuda_elapsed_ms": 3.908128023147583,
+          "timing_scope": "Host call wall; asynchronous dispatch on CUDA; CUDA duration separate"
+        },
+        {
+          "phase": "optimizer_step",
+          "duration_ns": 1919000,
+          "cuda_elapsed_ms": 2.4435839653015137,
+          "timing_scope": "Host call wall; asynchronous dispatch on CUDA; CUDA duration separate"
+        }
+      ],
+      "kernel_events": 382,
+      "launch_events": 382,
+      "streams": [
+        "7"
+      ]
+    },
+    {
+      "mode": "full",
+      "seed": 2,
+      "stage_index": null,
+      "status": "SUCCESS",
+      "parent_checkpoint_id": null,
+      "checkpoint_id": null,
+      "memory_sample_count": 2,
+      "operations": [
+        {
+          "phase": "training_forward",
+          "duration_ns": 6095600,
+          "cuda_elapsed_ms": 6.159552097320557,
+          "timing_scope": "Host call wall; asynchronous dispatch on CUDA; CUDA duration separate"
+        },
+        {
+          "phase": "loss_calculation",
+          "duration_ns": 1648700,
+          "cuda_elapsed_ms": 1.397760033607483,
+          "timing_scope": "Host call wall; asynchronous dispatch on CUDA; CUDA duration separate"
+        },
+        {
+          "phase": "training_backward",
+          "duration_ns": 4176800,
+          "cuda_elapsed_ms": 3.4402880668640137,
+          "timing_scope": "Host call wall; asynchronous dispatch on CUDA; CUDA duration separate"
+        },
+        {
+          "phase": "optimizer_step",
+          "duration_ns": 1321700,
+          "cuda_elapsed_ms": 0.8356480002403259,
+          "timing_scope": "Host call wall; asynchronous dispatch on CUDA; CUDA duration separate"
+        }
+      ],
+      "kernel_events": 382,
+      "launch_events": 382,
+      "streams": [
+        "7"
+      ]
+    },
+    {
+      "mode": "progressive",
+      "seed": 1,
+      "stage_index": 0,
+      "status": "SUCCESS",
+      "parent_checkpoint_id": null,
+      "checkpoint_id": "bc8cc4006d3c1c23665ba8d6ab57c2a12410035e01c37ca11bca1d9ba6641a11",
+      "memory_sample_count": 2,
+      "operations": [
+        {
+          "phase": "training_forward",
+          "duration_ns": 5889500,
+          "cuda_elapsed_ms": 5.377376079559326,
+          "timing_scope": "Host call wall; asynchronous dispatch on CUDA; CUDA duration separate"
+        },
+        {
+          "phase": "loss_calculation",
+          "duration_ns": 1114000,
+          "cuda_elapsed_ms": 1.1659200191497803,
+          "timing_scope": "Host call wall; asynchronous dispatch on CUDA; CUDA duration separate"
+        },
+        {
+          "phase": "training_backward",
+          "duration_ns": 4062300,
+          "cuda_elapsed_ms": 4.037471771240234,
+          "timing_scope": "Host call wall; asynchronous dispatch on CUDA; CUDA duration separate"
+        },
+        {
+          "phase": "optimizer_step",
+          "duration_ns": 1510600,
+          "cuda_elapsed_ms": 0.8659520149230957,
+          "timing_scope": "Host call wall; asynchronous dispatch on CUDA; CUDA duration separate"
+        }
+      ],
+      "kernel_events": 237,
+      "launch_events": 237,
+      "streams": [
+        "7"
+      ]
+    },
+    {
+      "mode": "progressive",
+      "seed": 1,
+      "stage_index": 1,
+      "status": "SUCCESS",
+      "parent_checkpoint_id": "bc8cc4006d3c1c23665ba8d6ab57c2a12410035e01c37ca11bca1d9ba6641a11",
+      "checkpoint_id": "1a7414b1ed786617c1157e9de256a90a2b0ac60d2f8ec134404679926fc146a6",
+      "memory_sample_count": 2,
+      "operations": [
+        {
+          "phase": "checkpoint_restore_seconds",
+          "duration_ns": 16882600,
+          "cuda_elapsed_ms": null,
+          "timing_scope": null
+        },
+        {
+          "phase": "training_forward",
+          "duration_ns": 7765200,
+          "cuda_elapsed_ms": 6.598944187164307,
+          "timing_scope": "Host call wall; asynchronous dispatch on CUDA; CUDA duration separate"
+        },
+        {
+          "phase": "loss_calculation",
+          "duration_ns": 1325500,
+          "cuda_elapsed_ms": 1.7559360265731812,
+          "timing_scope": "Host call wall; asynchronous dispatch on CUDA; CUDA duration separate"
+        },
+        {
+          "phase": "training_backward",
+          "duration_ns": 3540900,
+          "cuda_elapsed_ms": 2.9102718830108643,
+          "timing_scope": "Host call wall; asynchronous dispatch on CUDA; CUDA duration separate"
+        },
+        {
+          "phase": "optimizer_step",
+          "duration_ns": 1495400,
+          "cuda_elapsed_ms": 1.1134719848632812,
+          "timing_scope": "Host call wall; asynchronous dispatch on CUDA; CUDA duration separate"
+        }
+      ],
+      "kernel_events": 237,
+      "launch_events": 237,
+      "streams": [
+        "7"
+      ]
+    }
+  ],
+  "sample_trace_sha256": "22169b46191b4b94d500aa77e668f1dfc06f05fd457e1502d527981301c50d82",
+  "kernel_names": [
+    "ampere_sgemm_128x32_nt",
+    "ampere_sgemm_32x128_tn",
+    "ampere_sgemm_32x32_sliced1x4_nn"
+  ],
+  "browser": {
+    "errors": [],
+    "kernel": "_ZN2at6native27unrolled_elementwise_kernelINS0_13BinaryFunctorIxxbNS0_51_GLOBAL__N__e3604c96_18_CompareEQKernel_cu_d8008c9616CompareEqFunctorIxEEEESt5arrayIPcLy3EELi4E23TrivialOffsetCalculatorILi2EjESA_ILi1EjENS0_6memory15LoadWithoutCastENSD_16StoreWithoutCastEEEviT_T0_T2_T3_T4_T5_",
+    "stream": 7,
+    "correlation": 62,
+    "visibleKernelRows": 300,
+    "full": "passed",
+    "progressive": "passed",
+    "movedTraceDownload": "passed",
+    "supplied101SessionNavigation": "passed"
+  }
+}

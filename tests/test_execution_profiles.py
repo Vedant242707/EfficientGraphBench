@@ -43,7 +43,11 @@ def test_real_detailed_trace(tmp_path, device, model):
             epochs=2,
             latency_warmup=1,
             latency_repeats=2,
-            profiling={"level": "detailed", "epochs": [2]},
+            profiling={
+                "level": "detailed",
+                "epochs": [2],
+                "memory_sampling": {"interval_ms": 20, "max_samples": 30},
+            },
             output_dir=str(tmp_path),
         )
         .run()
@@ -52,6 +56,7 @@ def test_real_detailed_trace(tmp_path, device, model):
     assert result["status"] == "SUCCESS", result.get("failure_reason")
     assert result["instrumented"]
     execution = result["worker_execution"] if model != "gcn" else result["execution"]
+    assert 1 <= len(execution["memory_samples"]) <= 30
     # Parent preserves worker trace metadata as well as recovered crash-safe events.
     traces = execution.get("traces", [])
     assert len(traces) == 1, execution

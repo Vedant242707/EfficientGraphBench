@@ -10,7 +10,7 @@ from pathlib import Path
 
 import psutil
 
-from efficientgraphbench.profiling.events import CURRENT, read_journal, span
+from efficientgraphbench.profiling.events import CURRENT, read_journal, read_memory_samples, span
 
 STATUSES = {
     "RESOURCE_LIMIT",
@@ -87,6 +87,7 @@ class ExternalEnvironmentRunner(BaseModelRunner):
                 **result.get("worker_execution", {}),
                 "events_path": str(child_path),
                 "events": read_journal(child_path),
+                "memory_samples": read_memory_samples(child_path),
                 "clock_alignment": "separate process clock; not aligned to controller",
             }
             result["worker_wall_time_sec"] = time.perf_counter() - started
@@ -98,6 +99,7 @@ class ExternalEnvironmentRunner(BaseModelRunner):
                 "worker_execution": {
                     "events_path": str(child_path),
                     "events": read_journal(child_path),
+                    "memory_samples": read_memory_samples(child_path),
                 },
             }
             raise

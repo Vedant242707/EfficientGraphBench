@@ -43,12 +43,19 @@ class InteractiveReportOutput(ReportOutput):
                 f'href="data:{mime};base64,{encoded}">{label}</a>'
             )
         return (
-            '<div><p>The interactive report runs below. '
-            'For a full-size view, download the HTML and open it in your browser. '
-            'Use its PDF button and choose Save as PDF in the print dialog.</p><p>'
+            "<div><p>The interactive report runs below. "
+            "For a full-size view, download the HTML and open it in your browser. "
+            "Use its PDF button and choose Save as PDF in the print dialog.</p><p>"
             + " &nbsp; | &nbsp; ".join(links)
-            + '</p><p>If the embedded page is blocked by notebook trust settings, '
-            'use the downloaded HTML.</p>'
+            + (
+                "</p><p>Full traces travel in the saved ZIP bundle: "
+                + escape(str(self["bundle"]))
+                + ". Download it from Jupyter's file browser and extract it on the other machine."
+                if self.get("bundle")
+                else ""
+            )
+            + "</p><p>If the embedded page is blocked by notebook trust settings, "
+            "use the downloaded HTML.</p>"
             '<iframe title="EfficientGraphBench execution analysis" '
             'style="width:100%;height:950px;border:1px solid #536b90" '
             'sandbox="allow-scripts allow-same-origin allow-downloads allow-modals" '

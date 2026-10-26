@@ -1,5 +1,8 @@
 # Execution Analysis
 
+For reviewed CUDA capture evidence, separate navigation controls, portable
+bundles and failure tests, see [the execution review](execution_analysis_review.md).
+
 This feature lives on `codex/execution-analysis`. It complements Full and
 Progressive benchmarks; it is not another benchmark mode. Existing prediction
 metrics, model implementations, selection rules and checkpoint policies remain.
@@ -55,6 +58,7 @@ profiling every epoch of a large benchmark.
 | `{"level": "none"}` | Disable new instrumentation; preserve existing benchmark timers/memory measurements |
 | `{"level": "detailed", "epochs": [10]}` | Lifecycle events plus the selected epoch's operator trace and CUDA-event intervals when available |
 | `models`, `seeds`, `stages` | Optional lists restricting detailed collection |
+| `memory_sampling` | Optional detailed-mode sampling: `{"interval_ms": 20, "max_samples": 50}`. Bounds are 10-10,000 ms and 2-10,000 samples per process. |
 
 Detailed defaults to epoch 1 if `epochs` is omitted. Requesting a detailed run
 marks its results instrumented even when selection excludes all epochs. Profiler
@@ -74,6 +78,8 @@ Do not interpret a profiled timing as the model's normal performance.
 - `execution-analysis/execution.html`: offline dashboard.
 - `execution-analysis/execution.json`: session, phase, epoch, failure, hardware and profiler metadata.
 - `execution-analysis/traces/`: copied full traces accompanying the dashboard.
+- `execution-analysis/execution-bundle.zip`: transfer this ZIP and extract it to
+  retain access to full traces on another machine. A lone HTML contains previews only.
 
 ```python
 from efficientgraphbench.execution_analysis import reopen_execution
