@@ -37,6 +37,15 @@ def execute_stage(request, data, device, factory, software):
         )
         model, forward, optimizer, scheduler, settings = factory(local_request, stage_data, target)
         stage_data.to(target)
+        from efficientgraphbench.profiling.events import CURRENT
+
+        if CURRENT.get() is not None:
+            CURRENT.get().observed_devices = {
+                "requested": str(target),
+                "model_parameters": sorted({str(p.device) for p in model.parameters()}),
+                "node_features": str(stage_data.x.device),
+                "edges": str(stage_data.edge_index.device),
+            }
         stage_data.all_mask = torch.ones(stage_data.num_nodes, dtype=torch.bool, device=target)
 
         class Interface(torch.nn.Module):

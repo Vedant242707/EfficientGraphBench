@@ -64,6 +64,10 @@ def test_real_detailed_trace(tmp_path, device, model):
     assert any("egbench::training_forward" == e.get("name") for e in trace["traceEvents"])
     if device == "cuda":
         captured = any(e.get("cat") == "kernel" for e in trace["traceEvents"])
+        diagnostic = trace["efficientgraphbench"]["profiler"]
+        assert diagnostic["gpu_profiling_status"] == ("available" if captured else "unavailable")
+        assert "cupti_errors" in diagnostic
+        assert "loaded_profiler_cuda_libraries" in diagnostic["library_diagnostics"]
         assert captured or any("kernel tracing unavailable" in n for n in execution["notes"])
         assert any(e.get("cuda_elapsed_ms", 0) > 0 for e in execution["events"])
     if model == "graphgps":

@@ -10,6 +10,7 @@ from pathlib import Path
 from efficientgraphbench.execution_analysis.comparison import device_comparisons
 from efficientgraphbench.names import model_name
 from efficientgraphbench.profiling.accounting import reconcile
+from efficientgraphbench.profiling.trace_files import component
 from efficientgraphbench.results.artifact import InteractiveReportOutput
 
 
@@ -18,6 +19,7 @@ def execution_report(records, output_dir, metadata=None):
     output.mkdir(parents=True, exist_ok=True)
     sessions = []
     preview_budget = 2 * 1024 * 1024
+    seen_sources = set()
     for row in records:
         if row.get("measured") is False or str(row.get("status", "")).startswith("SKIPPED"):
             continue
@@ -65,16 +67,62 @@ def execution_report(records, output_dir, metadata=None):
                 if not path.exists():
                     session.setdefault("notes", []).append("Trace file unavailable: " + path.name)
                     continue
+                if path.resolve() in seen_sources:
+                    raise ValueError(
+                        "Duplicate source trace path; ambiguous attribution: " + str(path)
+                    )
+                seen_sources.add(path.resolve())
                 folder = output / "traces"
                 folder.mkdir(exist_ok=True)
-                target = folder / path.name
-                if target.resolve() != path.resolve():
-                    shutil.copyfile(path, target)
+                digest = hashlib.sha256(path.read_bytes()).hexdigest()
+                if trace.get("sha256") and trace["sha256"] != digest:
+                    raise ValueError("Source trace checksum mismatch: " + str(path))
+                identity_key = json.dumps(
+                    {
+                        "source": str(path.resolve()),
+                        "run": row.get("run_id"),
+                        "model": row.get("model"),
+                        "seed": row.get("seed"),
+                        "stage": session["stage_name"],
+                        "clock": source.get("clock_domain"),
+                        "capture_id": trace.get("capture_id"),
+                        "epoch": trace.get("epoch"),
+                    },
+                    sort_keys=True,
+                )
+                suffix = hashlib.sha256(identity_key.encode()).hexdigest()[:24]
+                filename = (
+                    "-".join(
+                        [
+                            "b" + component(trace.get("identity", {}).get("benchmark_id"))[:12],
+                            component(row.get("model")),
+                            "seed" + component(row.get("seed")),
+                            "stage" + component(session["stage_name"]),
+                            "epoch" + component(trace.get("epoch")),
+                            component(origin),
+                            component(trace.get("worker_attempt", source.get("clock_domain")))[:12],
+                            suffix,
+                        ]
+                    )
+                    + ".trace.json"
+                )
+                target = folder / filename
+                copy_trace(path, target, digest)
                 try:
                     data = json.loads(path.read_text(encoding="utf8"))
                 except (ValueError, OSError) as exc:
                     session["notes"].append("Trace cannot be read: " + str(exc))
                     continue
+                capture = data.get("efficientgraphbench")
+                if capture:
+                    if (
+                        capture.get("capture_id") != trace.get("capture_id")
+                        or capture.get("epoch") != trace.get("epoch")
+                        or capture.get("identity") != trace.get("identity")
+                        or capture.get("worker_attempt") != trace.get("worker_attempt")
+                        or capture.get("identity", {}).get("seed") != row.get("seed")
+                    ):
+                        raise ValueError("Trace capture identity does not match its metadata/seed")
                 measured = [
                     e
                     for e in data.get("traceEvents", [])
@@ -107,7 +155,7 @@ def execution_report(records, output_dir, metadata=None):
                         "event_count": len(measured),
                         "preview": preview,
                         "size_bytes": target.stat().st_size,
-                        "sha256": hashlib.sha256(target.read_bytes()).hexdigest(),
+                        "sha256": digest,
                     }
                 )
             session["profiling_status"] = profiling_status(session)
@@ -144,6 +192,8 @@ def profiling_status(session):
 
 
 def _write(payload, output):
+    manifest = validate_trace_files(payload, output)
+    payload["trace_manifest"] = manifest
     # Upgrade display metadata from recorded events, including older exports.
     for session in payload["sessions"]:
         for key, event_key in [
@@ -191,8 +241,13 @@ def _write(payload, output):
             if target.exists():
                 files.append(target)
     with zipfile.ZipFile(bundle, "w", compression=zipfile.ZIP_DEFLATED) as archive:
-        for path in dict.fromkeys(files):
+        for path in files:
             archive.write(path, path.relative_to(output).as_posix())
+        archive.writestr("trace-manifest.json", json.dumps(manifest, indent=2))
+    with zipfile.ZipFile(bundle) as archive:
+        names = [n for n in archive.namelist() if n.endswith(".trace.json")]
+        if len(names) != len(set(names)) or set(names) != {t["path"] for t in manifest["files"]}:
+            raise ValueError("ZIP trace contents do not match the declared manifest")
     return InteractiveReportOutput(report=report, data=output / "execution.json", bundle=bundle)
 
 
@@ -215,8 +270,60 @@ def reopen_execution(path, output_dir=None):
                 session.setdefault("notes", []).append("Full trace missing: " + str(relative))
             if source.exists() and source.resolve() != target.resolve():
                 target.parent.mkdir(parents=True, exist_ok=True)
-                shutil.copyfile(source, target)
+                copy_trace(source, target, trace.get("sha256"))
     return _write(payload, output)
+
+
+def copy_trace(source, target, expected_hash=None):
+    """Reuse identical files; never overwrite a different capture."""
+    digest = hashlib.sha256(source.read_bytes()).hexdigest()
+    if expected_hash and expected_hash != digest:
+        raise ValueError("Trace checksum mismatch: " + str(source))
+    try:
+        with target.open("xb") as stream, source.open("rb") as incoming:
+            shutil.copyfileobj(incoming, stream)
+    except FileExistsError:
+        if hashlib.sha256(target.read_bytes()).hexdigest() != digest:
+            raise ValueError("Refusing to overwrite a different trace: " + str(target)) from None
+
+
+def validate_trace_files(payload, output):
+    paths, files, missing = set(), [], []
+    for session in payload["sessions"]:
+        for trace in session.get("traces", []):
+            relative = Path(trace["path"])
+            key = relative.as_posix().casefold()
+            if relative.is_absolute() or ".." in relative.parts:
+                raise ValueError("Unsafe trace path")
+            if key in paths:
+                raise ValueError("Duplicate trace path in report metadata: " + str(relative))
+            paths.add(key)
+            path = output / relative
+            if not path.exists():
+                if trace.get("available") is False:
+                    missing.append(relative.as_posix())
+                    continue
+                raise ValueError("Declared trace file is missing: " + str(relative))
+            digest = hashlib.sha256(path.read_bytes()).hexdigest()
+            if trace.get("sha256") and digest != trace["sha256"]:
+                raise ValueError("Packaged trace checksum mismatch: " + str(relative))
+            files.append(
+                {
+                    "path": relative.as_posix(),
+                    "sha256": digest,
+                    "capture_id": trace.get("capture_id"),
+                    "model": session.get("model"),
+                    "seed": session.get("seed"),
+                    "stage": session.get("stage_name"),
+                    "epoch": trace.get("epoch"),
+                }
+            )
+    return {
+        "declared_references": len(paths),
+        "packaged_files": len(files),
+        "missing_files": missing,
+        "files": files,
+    }
 
 
 def report_link(records, output, metadata=None):

@@ -2,10 +2,15 @@
 
 import contextvars
 import json
+import os
+import platform
+import sys
 from contextlib import contextmanager
 
+from efficientgraphbench.profiling.capabilities import gpu_capture_status, library_diagnostics
 from efficientgraphbench.profiling.events import CURRENT, span
 from efficientgraphbench.profiling.sampling import sample_memory
+from efficientgraphbench.profiling.trace_files import capture_path
 
 ACTIVE = contextvars.ContextVar("detailed_epoch", default=None)
 
@@ -76,12 +81,22 @@ def epoch(number, device):
                 "device": str(device),
                 "status": "requested",
                 "supported_activities": [str(a) for a in torch.profiler.supported_activities()],
+                "python_executable": sys.executable,
+                "python_version": platform.python_version(),
+                "torch_version": torch.__version__,
+                "cuda_build": torch.version.cuda,
+                "cuda_available": torch.cuda.is_available(),
+                "kineto_available": torch.profiler.kineto_available(),
+                "observed_devices": getattr(recorder, "observed_devices", None),
+                "library_diagnostics": library_diagnostics(torch),
             }
             recorder.profile_attempts.append(diagnostic)
             try:
                 activities = [torch.profiler.ProfilerActivity.CPU]
                 if device.type == "cuda":
                     activities.append(torch.profiler.ProfilerActivity.CUDA)
+                    diagnostic["gpu_name"] = torch.cuda.get_device_name(device)
+                diagnostic["requested_activities"] = [str(a) for a in activities]
                 candidate = torch.profiler.profile(
                     activities=activities, profile_memory=True, record_shapes=True
                 )
@@ -90,6 +105,7 @@ def epoch(number, device):
                 diagnostic["status"] = "recording"
             except Exception as exc:
                 diagnostic.update(status="start_failed", reason=str(exc))
+                gpu_capture_status(diagnostic, [], device, os.environ.get("EGB_WORKER_LOG"))
                 recorder.notes.append("Detailed profiler could not start: " + str(exc))
         with sample_memory(recorder if requested else None, device, f"epoch {number}"):
             with span(
@@ -116,9 +132,10 @@ def epoch(number, device):
         if profile is not None:
             try:
                 profile.__exit__(None, None, None)
-                path = recorder.path.with_name(
-                    recorder.path.stem + "-epoch" + str(number) + ".trace.json"
-                )
+                path, capture_id = capture_path(recorder, number)
+                # Reserve exclusively before letting the profiler write its file.
+                # A collision must never replace any existing capture.
+                path.open("x", encoding="utf8").close()
                 profile.export_chrome_trace(str(path))
                 trace = json.loads(path.read_text(encoding="utf8"))
                 events = trace.get("traceEvents", [])
@@ -134,17 +151,44 @@ def epoch(number, device):
                     if kernels or device.type != "cuda"
                     else "cpu_only_no_cuda_kernels",
                     kernel_events=len(kernels),
+                    cuda_runtime_events=sum(e.get("cat") == "cuda_runtime" for e in events),
+                    cuda_driver_events=sum(e.get("cat") == "cuda_driver" for e in events),
                 )
+                trace["efficientgraphbench"] = {
+                    "schema_version": 1,
+                    "capture_id": capture_id,
+                    "identity": recorder.identity,
+                    "worker_attempt": recorder.domain,
+                    "epoch": number,
+                    "profiler": diagnostic,
+                }
                 if device.type == "cuda" and not kernels:
-                    recorder.notes.append(
-                        "CUDA kernel tracing unavailable: exported trace has no kernel events"
+                    diagnostic["cuda_capture_reason"] = (
+                        "Isolated profiler does not advertise CUDA activity support; "
+                        "CUDA execution/event timing does not imply kernel trace support"
+                        if str(torch.profiler.ProfilerActivity.CUDA)
+                        not in diagnostic["supported_activities"]
+                        else "CUDA activity was requested and advertised, but the export has no "
+                        "kernel events. Inspect worker.log for CUPTI/runtime errors; "
+                        "this does not establish CPU execution"
                     )
+                    recorder.notes.append(
+                        "CUDA kernel tracing unavailable: " + diagnostic["cuda_capture_reason"]
+                    )
+                gpu_capture_status(diagnostic, kernels, device, os.environ.get("EGB_WORKER_LOG"))
+                diagnostic["library_diagnostics"] = library_diagnostics(torch)
+                path.write_text(json.dumps(trace), encoding="utf8")
                 recorder.artifacts.append(
                     {
                         "path": str(path),
+                        "capture_id": capture_id,
+                        "identity": dict(recorder.identity),
+                        "worker_attempt": recorder.domain,
                         "epoch": number,
                         "kernel_events": len(kernels),
                         "launch_events": len(launches),
+                        "cuda_runtime_events": diagnostic["cuda_runtime_events"],
+                        "cuda_driver_events": diagnostic["cuda_driver_events"],
                         "kernel_names": list(dict.fromkeys(e["name"] for e in kernels))[:20],
                         "streams": sorted({str(e.get("args", {}).get("stream")) for e in kernels}),
                         "format": "pytorch_chrome_trace",

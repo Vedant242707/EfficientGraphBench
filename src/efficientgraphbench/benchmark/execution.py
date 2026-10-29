@@ -117,6 +117,7 @@ class ExternalEnvironmentRunner(BaseModelRunner):
             # Newer-controller allocator options are not understood by torch 1.13.
             environment.pop("PYTORCH_CUDA_ALLOC_CONF", None)
             environment.pop("PYTORCH_ALLOC_CONF", None)
+            environment["EGB_WORKER_LOG"] = str((self.directory / "worker.log").resolve())
             threads = str(request.get("config", {}).get("threads", 4))
             for key in (
                 "OMP_NUM_THREADS",

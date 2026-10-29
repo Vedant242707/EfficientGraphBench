@@ -327,6 +327,13 @@ def _execute(request, result_path):
             with span("device_transfer", synchronization="CUDA boundary"):
                 data = data.to(device)
                 synchronize(device)
+            if CURRENT.get() is not None:
+                CURRENT.get().observed_devices = {
+                    "requested": str(device),
+                    "model_parameters": sorted({str(p.device) for p in model.parameters()}),
+                    "node_features": str(data.x.device),
+                    "edges": str(data.edge_index.device),
+                }
             profiler.mark("model_preprocessing_initialization_and_device_transfer")
             result.update(settings)
             result["model_preprocessing_time_sec"] = time.perf_counter() - start
