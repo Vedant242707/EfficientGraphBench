@@ -1,5 +1,6 @@
 """Portable, offline execution explorer. No model or training imports."""
 
+import csv
 import hashlib
 import json
 import shutil
@@ -58,6 +59,7 @@ def execution_report(records, output_dir, metadata=None):
                 "model": row.get("model"),
                 "seed": row.get("seed"),
                 "training_seconds": row.get("training_time_sec"),
+                "stage_wall_seconds": row.get("stage_wall_time_sec"),
                 "peak_gpu_reserved_mib": row.get("peak_gpu_reserved_mib"),
                 "traces": [],
             }
@@ -191,6 +193,40 @@ def profiling_status(session):
     return "Detailed requested, but no capture recorded; check epoch/model/seed/stage selection"
 
 
+def epoch_clock_rows(events):
+    """Inclusive host wall intervals from the training process's monotonic journal."""
+    children = {}
+    for event in events:
+        if event.get("phase") in {"optimization_seconds", "validation_seconds"}:
+            children.setdefault(event.get("parent_event_id"), []).append(event)
+    rows = []
+    for event in events:
+        if event.get("phase") != "epoch":
+            continue
+        row = {
+            "epoch": event.get("epoch"),
+            "status": event.get("status"),
+            "start_utc": event.get("wall_start_utc"),
+            "end_utc": event.get("wall_end_utc"),
+            "epoch_wall_seconds": (
+                event["duration_ns"] / 1e9 if event.get("duration_ns") is not None else None
+            ),
+        }
+        for phase in ("optimization_seconds", "validation_seconds"):
+            spans = [
+                e
+                for e in children.get(event["event_id"], [])
+                if e["phase"] == phase and e.get("clock_domain") == event.get("clock_domain")
+            ]
+            row[phase] = (
+                sum(e["duration_ns"] for e in spans) / 1e9
+                if spans and all(e.get("duration_ns") is not None for e in spans)
+                else None
+            )
+        rows.append(row)
+    return sorted(rows, key=lambda row: row["epoch"] or 0)
+
+
 def _write(payload, output):
     manifest = validate_trace_files(payload, output)
     payload["trace_manifest"] = manifest
@@ -225,13 +261,56 @@ def _write(payload, output):
                 ]
             )
         session["profiling_status"] = profiling_status(session)
+        session["epoch_clock"] = epoch_clock_rows(session.get("events", []))
+    clock_log = output / "training-clock.csv"
+    with clock_log.open("w", newline="", encoding="utf8") as stream:
+        writer = csv.DictWriter(
+            stream,
+            fieldnames=[
+                "dataset",
+                "model",
+                "seed",
+                "stage",
+                "process",
+                "clock_domain",
+                "scope",
+                "epoch",
+                "status",
+                "start_utc",
+                "end_utc",
+                "epoch_wall_seconds",
+                "optimization_seconds",
+                "validation_seconds",
+                "training_seconds",
+                "stage_wall_seconds",
+            ],
+        )
+        writer.writeheader()
+        for session in payload["sessions"]:
+            if not session.get("model"):
+                continue
+            identity = {k: session.get(k) for k in ("dataset", "model", "seed", "clock_domain")}
+            identity.update(stage=session.get("stage_name"), process=session.get("origin"))
+            if session.get("origin") == "execution":
+                writer.writerow(
+                    {
+                        **identity,
+                        "scope": "stage" if session.get("stage_index") is not None else "run",
+                        **{
+                            k: session.get(k)
+                            for k in ("status", "training_seconds", "stage_wall_seconds")
+                        },
+                    }
+                )
+            for row in session["epoch_clock"]:
+                writer.writerow({**identity, "scope": "epoch", **row})
     (output / "execution.json").write_text(json.dumps(payload, allow_nan=False), encoding="utf8")
     template = Path(__file__).with_name("viewer.html").read_text(encoding="utf8")
     document = template.replace("__EXECUTION_DATA__", json.dumps(payload).replace("<", "\\u003c"))
     report = output / "execution.html"
     report.write_text(document, encoding="utf8")
     bundle = output / "execution-bundle.zip"
-    files = [report, output / "execution.json"]
+    files = [report, output / "execution.json", clock_log]
     for session in payload["sessions"]:
         for trace in session.get("traces", []):
             relative = Path(trace["path"])
