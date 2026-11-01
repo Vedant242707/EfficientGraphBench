@@ -49,6 +49,10 @@ def test_worker_clock_preserves_failed_epoch_and_single_stage_total(tmp_path):
     assert rows[2]["status"] == "incomplete"
     with zipfile.ZipFile(report["bundle"]) as bundle:
         assert bundle.read("training-clock.csv") == (tmp_path / "training-clock.csv").read_bytes()
+        summary = bundle.read("execution-preview.html").decode()
+        assert "<script" not in summary and "Epoch timings" in summary
+        assert "GraphGPS" in summary and "Seed 2" in summary and "incomplete" in summary
+        assert report["preview"].read_bytes().decode("utf8") == summary
 
 
 def test_export_reopen_and_missing(tmp_path):

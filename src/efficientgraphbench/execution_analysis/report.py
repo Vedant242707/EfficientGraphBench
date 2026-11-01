@@ -9,6 +9,7 @@ from html import escape
 from pathlib import Path
 
 from efficientgraphbench.execution_analysis.comparison import device_comparisons
+from efficientgraphbench.execution_analysis.preview import preview
 from efficientgraphbench.names import model_name
 from efficientgraphbench.profiling.accounting import reconcile
 from efficientgraphbench.profiling.trace_files import component
@@ -306,11 +307,22 @@ def _write(payload, output):
                 writer.writerow({**identity, "scope": "epoch", **row})
     (output / "execution.json").write_text(json.dumps(payload, allow_nan=False), encoding="utf8")
     template = Path(__file__).with_name("viewer.html").read_text(encoding="utf8")
-    document = template.replace("__EXECUTION_DATA__", json.dumps(payload).replace("<", "\\u003c"))
+    prefix, data_section = template.split("__EXECUTION_DATA__", 1)
+    summary = preview(payload["sessions"])
+    preview_path = output / "execution-preview.html"
+    preview_path.write_text(
+        prefix.split("__SAFE_PREVIEW__", 1)[0]
+        + summary
+        + '<p><a href="execution.html">Full interactive dashboard</a></p></html>',
+        encoding="utf8",
+    )
+    document = prefix.replace("__SAFE_PREVIEW__", summary) + (
+        json.dumps(payload).replace("<", "\\u003c") + data_section
+    )
     report = output / "execution.html"
     report.write_text(document, encoding="utf8")
     bundle = output / "execution-bundle.zip"
-    files = [report, output / "execution.json", clock_log]
+    files = [report, preview_path, output / "execution.json", clock_log]
     for session in payload["sessions"]:
         for trace in session.get("traces", []):
             relative = Path(trace["path"])
@@ -327,7 +339,9 @@ def _write(payload, output):
         names = [n for n in archive.namelist() if n.endswith(".trace.json")]
         if len(names) != len(set(names)) or set(names) != {t["path"] for t in manifest["files"]}:
             raise ValueError("ZIP trace contents do not match the declared manifest")
-    return InteractiveReportOutput(report=report, data=output / "execution.json", bundle=bundle)
+    return InteractiveReportOutput(
+        report=report, preview=preview_path, data=output / "execution.json", bundle=bundle
+    )
 
 
 def reopen_execution(path, output_dir=None):
