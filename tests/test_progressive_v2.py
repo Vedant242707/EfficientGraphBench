@@ -214,6 +214,11 @@ def test_report_separates_partial_scores_and_finalists(tmp_path):
         {"seeds": [1], "config": {"stages": []}, "compute": {}},
     )
     report = r.show_all(display=False).read_text(encoding="utf8")
+    assert "Open Execution Analysis" not in report
+    dashboard = (tmp_path / "benchmark-dashboard.html").read_text(encoding="utf8")
+    assert "Progressive benchmark score dashboard" in dashboard
+    assert "eliminated" in dashboard and "Seed 1" in dashboard
+    assert "execution.html" not in dashboard
     finalists = report.split("<h2>Full-graph finalists</h2>")[1].split(
         "<h2>Early-eliminated candidates</h2>"
     )[0]

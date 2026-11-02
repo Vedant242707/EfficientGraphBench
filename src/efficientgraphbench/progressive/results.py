@@ -646,9 +646,9 @@ class ProgressiveResults:
         ]
 
         css = "<style>" + dark_css(".progressive") + "</style>"
-        from efficientgraphbench.execution_analysis.report import report_link
+        from efficientgraphbench.results.score_dashboard import score_dashboard
 
-        parts.append(report_link(self.records, self.output_dir, self.metadata))
+        score_dashboard(self.records, self.output_dir, progressive=True)
         fragment = css + '<div class="progressive">' + "\n".join(parts) + "</div>"
 
         path = self.output_dir / "progressive-report.html"

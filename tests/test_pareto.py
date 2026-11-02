@@ -116,6 +116,10 @@ def test_combined_report_and_cli_no_retraining(tmp_path):
     results = BenchmarkResults(records)
     report = results.show_all(tmp_path / "api", display=False)
     content = report["report"].read_text(encoding="utf-8")
+    assert "Open Execution Analysis" not in content
+    assert report["dashboard"] != report["report"]
+    assert "Full benchmark score dashboard" in report["dashboard"].read_text(encoding="utf8")
+    assert not (tmp_path / "api" / "execution-analysis").exists()
     assert "Classification" in content and "Macro-F1" in content and "Pareto Comparison" in content
     assert "data:image/png;base64," in content
     assert "Quality: f1_macro" not in content

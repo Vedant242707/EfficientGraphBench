@@ -5,7 +5,6 @@ import hashlib
 import json
 import shutil
 import zipfile
-from html import escape
 from pathlib import Path
 
 from efficientgraphbench.execution_analysis.comparison import device_comparisons
@@ -313,7 +312,7 @@ def _write(payload, output):
     preview_path.write_text(
         prefix.split("__SAFE_PREVIEW__", 1)[0]
         + summary
-        + '<p><a href="execution.html">Full interactive dashboard</a></p></html>',
+        + '<p><a href="execution.html">Execution timeline and GPU kernel viewer</a></p></html>',
         encoding="utf8",
     )
     document = prefix.replace("__SAFE_PREVIEW__", summary) + (
@@ -417,15 +416,3 @@ def validate_trace_files(payload, output):
         "missing_files": missing,
         "files": files,
     }
-
-
-def report_link(records, output, metadata=None):
-    if not any(row.get("execution") or row.get("worker_execution") for row in records):
-        return ""
-    execution_report(records, Path(output) / "execution-analysis", metadata)
-    return (
-        "<section><h2>Execution Analysis</h2><p>Measured lifecycle, failure accounting "
-        "and selected-epoch traces. GPU kernel information appears only when captured.</p>"
-        '<p><a href="' + escape("execution-analysis/execution.html") + '">'
-        "Open Execution Analysis</a></p></section>"
-    )
