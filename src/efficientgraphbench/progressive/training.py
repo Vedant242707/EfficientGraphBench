@@ -29,12 +29,16 @@ from efficientgraphbench.training.evaluator import classification_metrics
 from efficientgraphbench.training.seed import seed_everything
 
 
+def _metrics(model, data, mask):
+    model.eval()
+    with torch.inference_mode():
+        return classification_metrics(model(data), data.y, mask)
+
+
 def evaluate(model: torch.nn.Module, data: Data, mask: torch.Tensor, metric: str) -> float | None:
     if not bool(mask.any()):
         return None
-    model.eval()
-    with torch.inference_mode():
-        return classification_metrics(model(data), data.y, mask)[metric.removeprefix("val_")]
+    return _metrics(model, data, mask)[metric.removeprefix("val_")]
 
 
 def _train_stage(
@@ -159,7 +163,8 @@ def _train_stage(
         with timed(timings, "post_adaptation_evaluation_seconds", device):
             old_score = evaluate(model, data, old, progressive.selection_metric)
             new_score = evaluate(model, data, new, progressive.selection_metric)
-            score = evaluate(model, data, data.val_mask, progressive.selection_metric)
+            validation = _metrics(model, data, data.val_mask)
+            score = validation[progressive.selection_metric.removeprefix("val_")]
         checkpoint = output / "checkpoints" / config.model.name / str(config.seed) / f"{index}.pt"
         metadata = {
             **identity,
@@ -194,6 +199,7 @@ def _train_stage(
         "resume_evidence": resumed,
         "checkpoint_path": str(checkpoint.resolve()),
         "validation_metric": score,
+        "validation_metrics": {k: validation[k] for k in ("accuracy", "f1_macro", "f1_micro")},
         "parameter_count": sum(p.numel() for p in model.parameters()),
         "trainable_parameter_count": sum(p.numel() for p in model.parameters() if p.requires_grad),
         "underlying_layer_classes": sorted(

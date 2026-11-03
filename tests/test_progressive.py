@@ -1,4 +1,5 @@
 import copy
+import json
 
 import pytest
 import torch
@@ -162,7 +163,13 @@ def test_end_to_end_lineage_and_separate_reporting(tmp_path):
     assert (results.output_dir / "progressive-report.html").exists()
     assert len(results.records) == 10
     successful = [r for r in results.records if r["status"] == "SUCCESS"]
+    metric = results.metadata["config"]["selection_metric"]
+    assert results.metadata["selection_protocol"]["metric"] == metric
+    assert results.metadata["selection_protocol"]["label"] in (
+        results.output_dir / "progressive-report.html"
+    ).read_text(encoding="utf8")
     for row in successful:
+        assert row["validation_metric"] == row["validation_metrics"][metric.removeprefix("val_")]
         assert row["checkpoint_policy"]["optimizer_state"] == "resume"
         if row["stage_index"] == 1:
             parent = next(
@@ -186,6 +193,44 @@ def test_end_to_end_lineage_and_separate_reporting(tmp_path):
     assert results.metadata["compute"]["wall_clock_reduction_percent"] is None
     unsupported = [r for r in results.records if r["model"] == "graphormer"]
     assert all(r["failure_reason"] == "progressive_resume_unsupported" for r in unsupported)
+
+
+def test_validation_macro_is_not_accuracy_on_same_mask():
+    from efficientgraphbench.progressive.training import _metrics
+
+    data = bundle().data
+    data.y[:5] = torch.tensor([0, 0, 0, 1, 1])
+    mask = torch.arange(data.num_nodes) < 4
+    logits = torch.zeros(data.num_nodes, 3)
+    logits[:, 0] = 1
+    model = torch.nn.Module()
+    model.forward = lambda d: logits
+    result = _metrics(model, data, mask)
+    assert result["accuracy"] == 0.75
+    assert result["f1_macro"] == pytest.approx(3 / 7)
+    assert result["f1_micro"] == result["accuracy"]
+
+
+def test_macro_selection_matches_metadata_promotion_and_report(tmp_path):
+    results = ProgressiveBenchmark(
+        bundle(),
+        models=["gcn"],
+        seeds=[1, 2],
+        progressive=config(selection_metric="val_f1_macro"),
+        device="cpu",
+        output_dir=str(tmp_path),
+    ).run()
+    payload = json.loads((results.output_dir / "progressive-results.json").read_text())
+    assert payload["metadata"]["selection_protocol"]["metric"] == "val_f1_macro"
+    rows = [r for r in payload["records"] if r["stage_index"] == 0]
+    scores = [r["validation_metrics"]["f1_macro"] for r in rows]
+    assert [r["validation_metric"] for r in rows] == scores
+    assert rows[0]["promotion"]["mean_validation_score"] == pytest.approx(sum(scores) / 2)
+    report = (results.output_dir / "progressive-report.html").read_text(encoding="utf8")
+    assert "Validation macro-F1 (mean)" in report and "Validation accuracy (paired mean)" in report
+    assert "Validation macro-F1 (selection)" in (
+        results.output_dir / "benchmark-dashboard.html"
+    ).read_text(encoding="utf8")
 
 
 def test_full_mode_dispatch_unchanged(monkeypatch):

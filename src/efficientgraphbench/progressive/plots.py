@@ -4,7 +4,7 @@ import base64
 import io
 
 
-def report_figures(records, compute):
+def report_figures(records, compute, metric_label="Validation score"):
     import matplotlib
 
     matplotlib.use("Agg")
@@ -79,8 +79,8 @@ def report_figures(records, compute):
             label=model_name(model),
         )
     ax.set_xticks([i + 1 for i in stages])
-    ax.set_xlabel("Fidelity stage — populations grow", color="#B8C5D9")
-    finish(fig, ax, "Validation across stages", "Mean validation score")
+    ax.set_xlabel("Fidelity stage â€” populations grow", color="#B8C5D9")
+    finish(fig, ax, metric_label + " across stages", metric_label + " (mean)")
 
     transitions = [
         r for r in good if r.get("adaptation", {}).get("new_node_score_pre_training") is not None
@@ -107,7 +107,9 @@ def report_figures(records, compute):
                 label=label,
             )
         ax.set_xticks(xs, [model_name(m) for m in names])
-        finish(fig, ax, f"Stage {last + 1}: same-node pre/post adaptation", "Mean validation score")
+        finish(
+            fig, ax, f"Stage {last + 1}: same-node pre/post adaptation", metric_label + " (mean)"
+        )
 
     if any("optimization_seconds" in r for r in good):
         fig, ax = plt.subplots(figsize=(7, 2.7))
@@ -138,7 +140,7 @@ def report_figures(records, compute):
             bottom += vals
         ax.set_xticks([i + 1 for i in stages])
         ax.set_xlabel("Fidelity stage", color="#B8C5D9")
-        finish(fig, ax, "Measured execution cost by stage", "Seconds — sum across seeds/models")
+        finish(fig, ax, "Measured execution cost by stage", "Seconds â€” sum across seeds/models")
     if compute.get("full_benchmark_elapsed_seconds") is not None:
         fig, ax = plt.subplots(figsize=(7, 2.5))
         ax.bar(

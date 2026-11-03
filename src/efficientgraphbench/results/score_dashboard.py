@@ -4,9 +4,10 @@ from collections import defaultdict
 from html import escape
 
 from efficientgraphbench.names import model_name
+from efficientgraphbench.progressive.metrics import metric_label
 
 
-def score_dashboard(records, output, *, progressive=False):
+def score_dashboard(records, output, *, progressive=False, selection_metric=None):
     mode = "Progressive" if progressive else "Full"
     groups = defaultdict(lambda: defaultdict(list))
     for r in records:
@@ -52,7 +53,15 @@ def score_dashboard(records, output, *, progressive=False):
                 '</summary><div class="scroll"><table><thead><tr>'
             )
             headers = (
-                ["Dataset", "Stage", "Status", "Candidate", "Validation score"]
+                [
+                    "Dataset",
+                    "Stage",
+                    "Status",
+                    "Candidate",
+                    metric_label(selection_metric) + " (selection)",
+                    "Validation accuracy",
+                    "Validation macro-F1",
+                ]
                 if progressive
                 else ["Dataset", "Status", "Validation accuracy"]
             )
@@ -71,6 +80,9 @@ def score_dashboard(records, output, *, progressive=False):
                     cells.append(text(r.get("candidate_status")))
                 validation = r.get("validation_metric" if progressive else "validation_accuracy")
                 cells.append(percent(validation) if status == "SUCCESS" else "—")
+                if progressive:
+                    paired = r.get("validation_metrics") or {}
+                    cells.extend(percent(paired.get(k)) for k in ("accuracy", "f1_macro"))
                 cells.extend(
                     percent(metrics.get(k)) if status == "SUCCESS" else "—"
                     for k in ("accuracy", "f1_macro", "f1_micro")

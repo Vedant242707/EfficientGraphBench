@@ -10,6 +10,7 @@ import pandas as pd
 
 from efficientgraphbench.names import model_name
 from efficientgraphbench.progressive.adaptation import transition_metrics
+from efficientgraphbench.progressive.metrics import LABELS, metric_label, selection_protocol
 from efficientgraphbench.progressive.plots import report_figures
 from efficientgraphbench.results.protocol import validate_progressive_records
 from efficientgraphbench.results.theme import dark_css
@@ -192,6 +193,11 @@ class ProgressiveResults:
         validate_progressive_records(records)
         self.records, self.output_dir, self.metadata = records, Path(output), metadata
 
+    def _score_headers(self):
+        name = self.metadata.get("config", {}).get("selection_metric")
+        label = metric_label(name)
+        return {"Validation mean": label + " (mean)", "Validation SD": label + " (SD)"}
+
     def summary(self) -> pd.DataFrame:
         validate_progressive_records(self.records)
         rows = []
@@ -227,6 +233,9 @@ class ProgressiveResults:
                 "Last stage": last + 1,
                 "Graph fraction": attempts[0]["fidelity"]["graph_fraction"],
                 "Validation mean": mean(scores) if scores else None,
+                "Selection metric": metric_label(
+                    self.metadata.get("config", {}).get("selection_metric")
+                ),
                 "Validation SD": stdev(scores) if len(scores) > 1 else 0.0 if scores else None,
                 "Successful seeds": len(final),
                 "Training s (all seeds)": sum(r.get("training_time_sec", 0) for r in good),
@@ -291,13 +300,18 @@ class ProgressiveResults:
             encoding="utf-8",
         )
 
-        self.summary().to_csv(self.output_dir / "progressive-summary.csv", index=False)
+        self.summary().rename(columns=self._score_headers()).to_csv(
+            self.output_dir / "progressive-summary.csv", index=False
+        )
 
         return path
 
     def show_all(self, *, open_browser: bool = False, display: bool = True) -> Path:
 
         self.save()
+
+        def show_table(frame):
+            return render_table(frame.rename(columns=self._score_headers()))
 
         m, cfg = self.metadata, self.metadata.get("config", {})
 
@@ -327,7 +341,13 @@ class ProgressiveResults:
             ),
             "Models selected": ", ".join(model_name(v) for v in m.get("models", [])),
             "Checkpoint policy": "Resume model + optimizer + scheduler (when configured)",
-            "Selection metric": cfg.get("selection_metric", "not recorded").replace("_", " "),
+            "Selection metric": metric_label(cfg.get("selection_metric")),
+            "Selection definition": m.get("selection_protocol", {}).get("definition")
+            or (
+                selection_protocol(cfg["selection_metric"])["definition"]
+                if cfg.get("selection_metric") in LABELS
+                else "Not recorded"
+            ),
             "Seeds": ", ".join(str(v) for v in m.get("seeds", [])),
             "Candidates attempted per stage": " → ".join(str(v) for v in progression),
             "Pruning safeguard": f"Margin {cfg.get('promotion_margin', 0):.3f}; "
@@ -349,7 +369,7 @@ class ProgressiveResults:
             "<p>This protocol continues training as the graph grows. It is not equivalent to "
             "the exhaustive Static Full Benchmark. Scores are fractions (0.80 = 80%); "
             "deltas are after − before: positive means improvement. A dash means unavailable.</p>",
-            render_table(pd.DataFrame(setup.items(), columns=["Setting", "Value"])),
+            show_table(pd.DataFrame(setup.items(), columns=["Setting", "Value"])),
             '<div class="stage-flow">'
             + "".join(
                 f'<div class="stage-box"><b>{stage["graph_fraction"]:.0%} graph</b>'
@@ -413,7 +433,7 @@ class ProgressiveResults:
         )
 
         for columns in groups:
-            parts.append(render_table(finalists.reindex(columns=columns)))
+            parts.append(show_table(finalists.reindex(columns=columns)))
 
         parts += [
             "<h2>Early-eliminated candidates</h2>",
@@ -436,11 +456,11 @@ class ProgressiveResults:
 
         failed = partial[partial["State"] != "eliminated"] if not partial.empty else partial
 
-        parts.append(render_table(eliminated.reindex(columns=columns)))
+        parts.append(show_table(eliminated.reindex(columns=columns)))
 
         parts += [
             "<h3>Failed, skipped or unsupported candidates</h3>",
-            render_table(failed.reindex(columns=["Model", "State", *columns[1:]])),
+            show_table(failed.reindex(columns=["Model", "State", *columns[1:]])),
         ]
 
         for index in sorted({r["fidelity"]["stage_index"] for r in self.records}):
@@ -463,6 +483,14 @@ class ProgressiveResults:
                 good = [r for r in attempts if r["status"] == "SUCCESS"]
 
                 scores = [r["validation_metric"] for r in good]
+                paired = [
+                    r["validation_metrics"]
+                    for r in good
+                    if all(
+                        r.get("validation_metrics", {}).get(k) is not None
+                        for k in ("accuracy", "f1_macro")
+                    )
+                ]
 
                 item = {
                     "Model": model_name(model),
@@ -472,6 +500,13 @@ class ProgressiveResults:
                     "Successful seeds": len(good),
                     "Validation mean": mean(scores) if scores else None,
                     "Validation SD": stdev(scores) if len(scores) > 1 else 0.0 if scores else None,
+                    "Paired seeds": len(paired),
+                    "Validation accuracy (paired mean)": mean(p["accuracy"] for p in paired)
+                    if paired
+                    else None,
+                    "Validation macro-F1 (paired mean)": mean(p["f1_macro"] for p in paired)
+                    if paired
+                    else None,
                     "Recovery status": recovery_counts(good),
                     **recovery_summary(good),
                     "Training s": sum(r["training_time_sec"] for r in good),
@@ -519,7 +554,7 @@ class ProgressiveResults:
             frame = pd.DataFrame(rows)
 
             parts.append(
-                render_table(
+                show_table(
                     frame.reindex(
                         columns=[
                             "Model",
@@ -535,7 +570,7 @@ class ProgressiveResults:
 
             if index < len(m.get("selection_counts", [])):
                 parts.append(
-                    render_table(
+                    show_table(
                         pd.DataFrame(
                             [
                                 (k.replace("_", " "), v)
@@ -560,6 +595,12 @@ class ProgressiveResults:
                 ["Model", "Previous score", "Old before", "New before", "Old after", "New after"],
                 [
                     "Model",
+                    "Paired seeds",
+                    "Validation accuracy (paired mean)",
+                    "Validation macro-F1 (paired mean)",
+                ],
+                [
+                    "Model",
                     "Expansion delta",
                     "Old adaptation",
                     "New gain",
@@ -577,11 +618,15 @@ class ProgressiveResults:
                     "RAM peak MiB",
                 ],
             ]:
-                parts.append(render_table(frame.reindex(columns=cols)))
+                parts.append(show_table(frame.reindex(columns=cols)))
 
         parts.append("<h2>Adaptation and resource visualizations</h2>")
 
-        parts.append(report_figures(self.records, m.get("compute", {})))
+        parts.append(
+            report_figures(
+                self.records, m.get("compute", {}), metric_label(cfg.get("selection_metric"))
+            )
+        )
 
         compute = m.get("compute", {})
 
@@ -609,7 +654,7 @@ class ProgressiveResults:
 
         parts += [
             "<h2>Resource analysis</h2>",
-            render_table(
+            show_table(
                 pd.DataFrame(
                     [(label, compute.get(key)) for key, label in labels.items()],
                     columns=["Setting", "Value"],
@@ -620,7 +665,7 @@ class ProgressiveResults:
             "uses last-stage weights, stage-end validation and recovery checks until the "
             "first threshold crossing. Equal epochs do not mean equal graph exposure or "
             "compute; differences cannot be attributed solely to graph expansion.</p>",
-            render_table(pd.DataFrame(GLOSSARY, columns=["Metric", "Formula", "Meaning"])),
+            show_table(pd.DataFrame(GLOSSARY, columns=["Metric", "Formula", "Meaning"])),
             "<p>Selection uses validation scores only. Sample standard deviation "
             "describes seed variability, "
             "not statistical significance. Margin or overlapping mean ± SD bands "
@@ -648,7 +693,12 @@ class ProgressiveResults:
         css = "<style>" + dark_css(".progressive") + "</style>"
         from efficientgraphbench.results.score_dashboard import score_dashboard
 
-        score_dashboard(self.records, self.output_dir, progressive=True)
+        score_dashboard(
+            self.records,
+            self.output_dir,
+            progressive=True,
+            selection_metric=cfg.get("selection_metric"),
+        )
         fragment = css + '<div class="progressive">' + "\n".join(parts) + "</div>"
 
         path = self.output_dir / "progressive-report.html"

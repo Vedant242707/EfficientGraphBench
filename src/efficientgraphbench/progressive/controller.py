@@ -21,6 +21,7 @@ from efficientgraphbench.progressive.baseline import compute_accounting, load_fu
 from efficientgraphbench.progressive.capabilities import progressive_capabilities
 from efficientgraphbench.progressive.config import ProgressiveConfig
 from efficientgraphbench.progressive.graphs import ProgressionBuilder
+from efficientgraphbench.progressive.metrics import selection_protocol
 from efficientgraphbench.progressive.reference import train_reference_stage
 from efficientgraphbench.progressive.results import ProgressiveResults
 from efficientgraphbench.progressive.selection import select_candidates
@@ -110,6 +111,7 @@ class ProgressiveBenchmark:
         metadata = {
             "benchmark_mode": "progressive_multi_fidelity",
             "config": self.progressive.to_dict(),
+            "selection_protocol": selection_protocol(self.progressive.selection_metric),
             "hardware": hardware,
             "hardware_fingerprint": hardware_hash,
             "software": provenance,
