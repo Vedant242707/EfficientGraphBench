@@ -36,6 +36,57 @@ def test_bulk_refresh_preserves_saved_data_and_zip_only_traces(tmp_path):
         assert 'id="modelSelect"' in report["report"].read_text(encoding="utf8")
 
 
+def test_refresh_recovers_preview_from_zip_only_capture(tmp_path):
+    spec = importlib.util.spec_from_file_location(
+        "refresh_dashboards",
+        Path(__file__).resolve().parents[1] / "examples/refresh_execution_dashboards.py",
+    )
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    payload = {
+        "schema_version": 1,
+        "sessions": [
+            {
+                "model": "gcn",
+                "seed": 1,
+                "traces": [
+                    {
+                        "path": "traces/only.json",
+                        "epoch": 10,
+                        "event_count": 1,
+                        "preview": [],
+                    }
+                ],
+            }
+        ],
+    }
+    source = tmp_path / "execution.json"
+    source.write_text(json.dumps(payload))
+    raw = source.read_bytes()
+    capture = json.dumps(
+        {
+            "traceEvents": [
+                dict(
+                    ph="X",
+                    cat="kernel",
+                    name="fixture_kernel",
+                    ts=1,
+                    dur=2,
+                )
+            ]
+        }
+    )
+    with zipfile.ZipFile(tmp_path / "execution-bundle.zip", "w") as bundle:
+        bundle.writestr("traces/only.json", capture)
+    module.refresh(source)
+    html = (tmp_path / "execution.html").read_text(encoding="utf8")
+    embedded = json.loads(html.split('id="savedSessions">')[1].split("</script>")[0])
+    assert embedded["sessions"][0]["traces"][0]["preview"][0]["name"] == "fixture_kernel"
+    assert source.read_bytes() == raw
+    with zipfile.ZipFile(tmp_path / "execution-bundle.zip") as bundle:
+        assert bundle.read("traces/only.json").decode() == capture
+
+
 def test_worker_clock_preserves_failed_epoch_and_single_stage_total(tmp_path):
     def event(phase, event_id, parent, duration, epoch=1):
         return dict(

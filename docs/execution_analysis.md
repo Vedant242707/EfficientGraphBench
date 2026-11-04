@@ -162,7 +162,8 @@ process memory, not incremental profiler overhead or CPU utilization.
   epoch. They do not create a new recovery checkpoint. Existing progressive parent
   checkpoints remain governed by the existing checksum/continuation policy; an
   interrupted partial epoch is not resumable from these events alone.
-- Detailed previews embed at most 20,000 intervals per trace and render at most
+- Detailed previews share a 2 MiB event budget across traces, prioritize recorded
+  CUDA kernels, embed at most 2,000 intervals per trace and render at most
   300 matches. Full trace files retain the rest. Very large trace-file imports
   still require browser memory; this is not a streaming Perfetto replacement.
 - Exact college GraphGPS OOM allocation stacks and the old unexplained remainders
@@ -198,3 +199,10 @@ It preserves saved data and every other ZIP member, including trace files.
 Pass another experiment directory as an additional argument if needed.
 Restart the notebook kernel before generating new reports so it loads the
 updated exporter. Existing browser tabs must be reloaded.
+
+The refresh rebuilds bounded previews from full trace files, including captures
+stored only in the ZIP, while preserving raw JSON and capture bytes. The GPU
+Kernels tab retains the selected captured trace when a training epoch was not
+profiled and explicitly labels the displayed capture's epoch. Empty previews
+are not evidence of failed CUDA capture; load the full Chrome trace to inspect
+all events. If no trace was recorded, the tab shows capture diagnostics instead.

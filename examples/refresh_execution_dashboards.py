@@ -1,6 +1,7 @@
 """Update all saved execution HTML pages and their ZIP copies without running models."""
 
 import argparse
+import hashlib
 import json
 import os
 import shutil
@@ -8,7 +9,11 @@ import tempfile
 import zipfile
 from pathlib import Path
 
-from efficientgraphbench.execution_analysis.report import dashboard_pages, epoch_clock_rows
+from efficientgraphbench.execution_analysis.report import (
+    bounded_trace_preview,
+    dashboard_pages,
+    epoch_clock_rows,
+)
 
 
 def refresh(source):
@@ -17,9 +22,32 @@ def refresh(source):
         raise ValueError("Not an EfficientGraphBench execution export")
     for session in payload["sessions"]:
         session.setdefault("epoch_clock", epoch_clock_rows(session.get("events", [])))
-    pages = dashboard_pages(payload)
     folder = source.parent
     bundle = folder / "execution-bundle.zip"
+    traces = [t for s in payload["sessions"] for t in s.get("traces", [])]
+    budget = (2 * 1024 * 1024) // max(1, len(traces))
+    # Recover empty/truncated previews from preserved captures, not from training.
+    archive = zipfile.ZipFile(bundle) if bundle.exists() else None
+    try:
+        for trace in traces:
+            relative = Path(trace["path"])
+            if relative.is_absolute() or ".." in relative.parts:
+                raise ValueError("Trace must stay inside the export folder")
+            target = folder / relative
+            member = relative.as_posix()
+            if target.is_file():
+                raw = target.read_bytes()
+            elif archive and member in archive.namelist():
+                raw = archive.read(member)
+            else:
+                continue
+            if trace.get("sha256") and hashlib.sha256(raw).hexdigest() != trace["sha256"]:
+                raise ValueError("Trace checksum mismatch: " + member)
+            trace["preview"] = bounded_trace_preview(json.loads(raw).get("traceEvents", []), budget)
+    finally:
+        if archive:
+            archive.close()
+    pages = dashboard_pages(payload)
     with tempfile.TemporaryDirectory(dir=folder) as tmp:
         tmp = Path(tmp)
         for name, html in pages.items():

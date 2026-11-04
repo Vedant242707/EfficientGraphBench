@@ -19,7 +19,13 @@ def execution_report(records, output_dir, metadata=None):
     output = Path(output_dir)
     output.mkdir(parents=True, exist_ok=True)
     sessions = []
-    preview_budget = 2 * 1024 * 1024
+    records = list(records)
+    trace_count = sum(
+        len((row.get(origin) or {}).get("traces", []))
+        for row in records
+        for origin in ("execution", "worker_execution")
+    )
+    preview_budget = (2 * 1024 * 1024) // max(1, trace_count)
     seen_sources = set()
     for row in records:
         if row.get("measured") is False or str(row.get("status", "")).startswith("SKIPPED"):
@@ -130,32 +136,14 @@ def execution_report(records, output_dir, metadata=None):
                     for e in data.get("traceEvents", [])
                     if e.get("ph") == "X" and isinstance(e.get("dur"), (float, int))
                 ]
-                # A global byte budget prevents many traces from bloating HTML.
-                preferred = [
-                    e
-                    for e in measured
-                    if e.get("cat") in {"kernel", "cuda_runtime", "cuda_driver", "user_annotation"}
-                ]
-                rest = [
-                    e
-                    for e in measured
-                    if e.get("cat")
-                    not in {"kernel", "cuda_runtime", "cuda_driver", "user_annotation"}
-                ]
-                preview = []
-                for event in preferred + rest:
-                    size = len(json.dumps(event).encode("utf8"))
-                    if size > preview_budget or len(preview) >= 2000:
-                        continue
-                    preview.append(event)
-                    preview_budget -= size
-                preview.sort(key=lambda e: e.get("ts", 0))
+                # Share the bounded preview fairly; early seeds cannot consume it all.
+                trace_preview = bounded_trace_preview(measured, preview_budget)
                 session["traces"].append(
                     {
                         **trace,
                         "path": "traces/" + target.name,
                         "event_count": len(measured),
-                        "preview": preview,
+                        "preview": trace_preview,
                         "size_bytes": target.stat().st_size,
                         "sha256": digest,
                     }
@@ -173,6 +161,28 @@ def execution_report(records, output_dir, metadata=None):
         "scope": "Saved events only. Clock domains cannot be aligned retrospectively.",
     }
     return _write(payload, output)
+
+
+def bounded_trace_preview(events, budget):
+    """Prioritize measured CUDA kernels within one trace's share of the HTML budget."""
+    valid = [
+        e
+        for e in events
+        if e.get("ph") == "X"
+        and isinstance(e.get("ts"), (int, float))
+        and isinstance(e.get("dur"), (int, float))
+    ]
+    priority = {"kernel": 0, "cuda_runtime": 1, "cuda_driver": 1, "user_annotation": 2}
+    result = []
+    for event in sorted(valid, key=lambda e: priority.get(e.get("cat"), 3)):
+        size = len(json.dumps(event).encode("utf8"))
+        if size > budget:
+            continue
+        result.append(event)
+        budget -= size
+        if len(result) == 2000:
+            break
+    return sorted(result, key=lambda e: e["ts"])
 
 
 def profiling_status(session):

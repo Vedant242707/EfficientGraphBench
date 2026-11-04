@@ -23,6 +23,23 @@ def record(seed, path):
     }
 
 
+def test_preview_budget_does_not_starve_later_seeds(tmp_path):
+    rows = []
+    for seed in (1, 2, 3):
+        path = tmp_path / f"seed{seed}.json"
+        events = [
+            dict(ph="X", cat="cpu_op", name="cpu" + "x" * 3000, ts=i, dur=1) for i in range(800)
+        ]
+        events.append(dict(ph="X", cat="kernel", name="fixture_kernel", ts=900, dur=1))
+        path.write_text(json.dumps({"traceEvents": events}))
+        rows.append(record(seed, path))
+    report = execution_report(rows, tmp_path / "export")
+    payload = json.loads(report["data"].read_text())
+    previews = [s["traces"][0]["preview"] for s in payload["sessions"]]
+    assert all(any(e["cat"] == "kernel" for e in preview) for preview in previews)
+    assert sum(len(json.dumps(e).encode("utf8")) for p in previews for e in p) <= 2 * 1024 * 1024
+
+
 def test_same_worker_basename_preserves_independent_seeds(tmp_path):
     rows = []
     for seed in [1, 2]:
