@@ -17,7 +17,7 @@ results = Benchmark(
     output_dir="experiments/execution-texas",
     profiling={"level": "detailed", "epochs": [1, 10]},
 ).run()
-results.show_all()                    # Existing report, plus an execution link
+results.show_all()                    # Benchmark scores
 results.execution_analysis()          # Optional standalone explorer
 ```
 
@@ -172,3 +172,29 @@ process memory, not incremental profiler overhead or CPU utilization.
 
 See [design and confirmed timing gaps](execution_analysis_design.md) and
 [validation evidence](execution_analysis_validation.md).
+
+### Refresh existing dashboards without training
+
+`execution["report"]` and the compatibility key `execution["preview"]` both open
+`execution.html`, the interactive dashboard. `execution["summary"]` opens the
+explicit no-script notebook view. The old `execution-preview.html` filename
+opens the interactive page when JavaScript is permitted. Jupyter may block
+scripts; for full selectors, timelines and kernel filters, extract the ZIP and
+open `execution.html` in a browser.
+
+After updating the repository, run this in a college Jupyter cell:
+
+```python
+import subprocess, sys
+subprocess.run([
+    sys.executable,
+    "/home/ise/EfficientGraphBench/examples/refresh_execution_dashboards.py",
+], check=True)
+```
+
+This refreshes saved Full and Progressive execution reports under both
+`experiments/` and `examples/experiments/`, including their ZIP HTML pages.
+It preserves saved data and every other ZIP member, including trace files.
+Pass another experiment directory as an additional argument if needed.
+Restart the notebook kernel before generating new reports so it loads the
+updated exporter. Existing browser tabs must be reloaded.

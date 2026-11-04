@@ -20,7 +20,7 @@ def preview(sessions):
         if session.get("model"):
             groups[session["model"]][session.get("seed")].append(session)
     out = [
-        '<section id="safePreview"><h2>Execution results</h2>',
+        '<section id="safePreview"><h2>Execution dashboard · notebook view</h2>',
         "<p>Expand a model, then a seed and stage to inspect its saved measurements. "
         "This view works without scripts. For the interactive timeline and kernel filters, "
         "download and extract the <a href='execution-bundle.zip' download>report ZIP</a> "
@@ -52,6 +52,19 @@ def preview(sessions):
                 if s.get("failure_reason"):
                     out.append(f"<p>{_text(s['failure_reason'])}</p>")
                 out.append(f"<p>{_text(s.get('profiling_status'))}</p>")
+                out.append("<details><summary>GPU Kernels</summary>")
+                traces = s.get("traces", [])
+                if not traces:
+                    out.append("<p>No detailed traces recorded for this process.</p>")
+                for t in traces:
+                    out.append(
+                        f"<p>Epoch {_text(t.get('epoch'))} · "
+                        f"Kernel events: {_text(t.get('kernel_events'))} · "
+                        f"Launches: {_text(t.get('launch_events'))} · "
+                        f"Streams: {_text(', '.join(map(str, t.get('streams', []))) or '—')}"
+                        f"<br>Measured kernels: "
+                        f"{_text(', '.join(t.get('kernel_names', [])) or 'None recorded')}</p>"
+                    )
                 for a in s.get("profile_attempts", []):
                     out.append(
                         f"<p>Epoch {_text(a.get('epoch'))} · GPU profiling: "
@@ -59,16 +72,18 @@ def preview(sessions):
                         f"Kernel events: {_text(a.get('kernel_events'))}. "
                         f"{_text(a.get('cuda_capture_reason') or a.get('reason') or '')}</p>"
                     )
+                out.append("</details>")
                 rows = s.get("epoch_clock", [])
                 if rows:
                     out.append(
-                        "<details><summary>Epoch timings</summary>"
-                        "<pre>Epoch     Wall (s)     Optimization (s)"
+                        "<details><summary>Epoch timings · Epoch Breakdown</summary>"
+                        "<pre>Epoch  Start (UTC) / End (UTC)     Wall (s)     Optimization (s)"
                         "     Validation (s)     Status\n"
                     )
                     for r in rows:
                         out.append(
-                            f"{_text(r['epoch']):>5} {_seconds(r['epoch_wall_seconds']):>12} "
+                            f"{_text(r['epoch']):>5} {_text(r.get('start_utc'))} / "
+                            f"{_text(r.get('end_utc'))}  {_seconds(r['epoch_wall_seconds']):>12} "
                             f"{_seconds(r['optimization_seconds']):>20} "
                             f"{_seconds(r['validation_seconds']):>18}     "
                             f"{_text(r['status'])}\n"

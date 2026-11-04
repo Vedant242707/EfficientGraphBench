@@ -1,9 +1,39 @@
 import csv
+import importlib.util
 import json
 import zipfile
+from pathlib import Path
 
 from efficientgraphbench.execution_analysis import execution_report, reopen_execution
 from efficientgraphbench.execution_analysis.comparison import device_comparisons
+
+
+def test_bulk_refresh_preserves_saved_data_and_zip_only_traces(tmp_path):
+    spec = importlib.util.spec_from_file_location(
+        "refresh_dashboards",
+        Path(__file__).resolve().parents[1] / "examples/refresh_execution_dashboards.py",
+    )
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    for mode in ("full", "progressive-100pct"):
+        folder = tmp_path / mode
+        report = execution_report([], folder)
+        score = folder / "benchmark-dashboard.html"
+        score.write_text("unchanged scores", encoding="utf8")
+        with zipfile.ZipFile(report["bundle"], "a") as bundle:
+            bundle.writestr("traces/zip-only.trace.json", '{"traceEvents": []}')
+        with zipfile.ZipFile(report["bundle"]) as bundle:
+            before = {n: bundle.read(n) for n in bundle.namelist() if not n.endswith(".html")}
+        raw = report["data"].read_bytes()
+        module.refresh(report["data"])
+        assert report["data"].read_bytes() == raw
+        assert score.read_text() == "unchanged scores"
+        with zipfile.ZipFile(report["bundle"]) as bundle:
+            after = {n: bundle.read(n) for n in bundle.namelist() if not n.endswith(".html")}
+            assert before == after
+            for name in ("execution.html", "execution-preview.html", "execution-summary.html"):
+                assert bundle.read(name) == (folder / name).read_bytes()
+        assert 'id="modelSelect"' in report["report"].read_text(encoding="utf8")
 
 
 def test_worker_clock_preserves_failed_epoch_and_single_stage_total(tmp_path):
@@ -49,10 +79,15 @@ def test_worker_clock_preserves_failed_epoch_and_single_stage_total(tmp_path):
     assert rows[2]["status"] == "incomplete"
     with zipfile.ZipFile(report["bundle"]) as bundle:
         assert bundle.read("training-clock.csv") == (tmp_path / "training-clock.csv").read_bytes()
-        summary = bundle.read("execution-preview.html").decode()
+        assert report["preview"] == report["report"]
+        assert (
+            'location.replace("execution.html")' in bundle.read("execution-preview.html").decode()
+        )
+        summary = bundle.read("execution-summary.html").decode()
         assert "<script" not in summary and "Epoch timings" in summary
         assert "GraphGPS" in summary and "Seed 2" in summary and "incomplete" in summary
-        assert report["preview"].read_bytes().decode("utf8") == summary
+        assert report["summary"].read_bytes().decode("utf8") == summary
+        assert "GPU Kernels" in summary and "Start (UTC)" in summary
 
 
 def test_export_reopen_and_missing(tmp_path):

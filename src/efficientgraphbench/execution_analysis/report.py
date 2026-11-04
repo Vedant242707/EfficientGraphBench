@@ -305,23 +305,12 @@ def _write(payload, output):
             for row in session["epoch_clock"]:
                 writer.writerow({**identity, "scope": "epoch", **row})
     (output / "execution.json").write_text(json.dumps(payload, allow_nan=False), encoding="utf8")
-    template = Path(__file__).with_name("viewer.html").read_text(encoding="utf8")
-    prefix, data_section = template.split("__EXECUTION_DATA__", 1)
-    summary = preview(payload["sessions"])
-    preview_path = output / "execution-preview.html"
-    preview_path.write_text(
-        prefix.split("__SAFE_PREVIEW__", 1)[0]
-        + summary
-        + '<p><a href="execution.html">Execution timeline and GPU kernel viewer</a></p></html>',
-        encoding="utf8",
-    )
-    document = prefix.replace("__SAFE_PREVIEW__", summary) + (
-        json.dumps(payload).replace("<", "\\u003c") + data_section
-    )
+    pages = dashboard_pages(payload)
+    for name, html in pages.items():
+        (output / name).write_text(html, encoding="utf8")
     report = output / "execution.html"
-    report.write_text(document, encoding="utf8")
     bundle = output / "execution-bundle.zip"
-    files = [report, preview_path, output / "execution.json", clock_log]
+    files = [*(output / name for name in pages), output / "execution.json", clock_log]
     for session in payload["sessions"]:
         for trace in session.get("traces", []):
             relative = Path(trace["path"])
@@ -339,8 +328,31 @@ def _write(payload, output):
         if len(names) != len(set(names)) or set(names) != {t["path"] for t in manifest["files"]}:
             raise ValueError("ZIP trace contents do not match the declared manifest")
     return InteractiveReportOutput(
-        report=report, preview=preview_path, data=output / "execution.json", bundle=bundle
+        report=report,
+        preview=report,
+        summary=output / "execution-summary.html",
+        data=output / "execution.json",
+        bundle=bundle,
     )
+
+
+def dashboard_pages(payload):
+    template = Path(__file__).with_name("viewer.html").read_text(encoding="utf8")
+    prefix, data_section = template.split("__EXECUTION_DATA__", 1)
+    summary = preview(payload["sessions"])
+    header = prefix.split("__SAFE_PREVIEW__", 1)[0]
+    fallback = header + summary + "</html>"
+    # Old notebook cells may hard-code this filename. Keep one large interactive
+    # document and open it from the small compatibility page when scripts run.
+    legacy = header + '<script>location.replace("execution.html")</script>' + summary + "</html>"
+    document = prefix.replace("__SAFE_PREVIEW__", summary) + (
+        json.dumps(payload).replace("<", "\\u003c") + data_section
+    )
+    return {
+        "execution.html": document,
+        "execution-preview.html": legacy,
+        "execution-summary.html": fallback,
+    }
 
 
 def reopen_execution(path, output_dir=None):
