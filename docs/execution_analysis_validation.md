@@ -138,7 +138,7 @@ New supporting files:
 - `execution_analysis/{__init__,report,comparison}.py` and `viewer.html`
 - `tests/test_execution_{events,profiles,report}.py`
 - `examples/measure_execution_overhead.py`
-- This guide, `execution_analysis.md`, `execution_analysis_design.md`,
+- This guide, `execution_analysis.md`,
   and `execution_overhead.json` under `docs/`
 
 See the [usage guide](execution_analysis.md) for Full/Progressive commands,

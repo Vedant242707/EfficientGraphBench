@@ -1,3 +1,6 @@
 include LICENSE CHANGELOG.md PYTHON_COMMANDS.md PYTHON_API_REFERENCE.md YOUR_NOTEBOOK_SETUP.md
 recursive-include docs *.md
+recursive-include docs *.html *.json
 recursive-include examples *.py *.csv
+recursive-include examples *.ipynb
+recursive-include configs *.yaml

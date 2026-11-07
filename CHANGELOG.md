@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Consolidate redundant architecture/design notes, clean repository ignore rules and notebook formatting, and include notebook/configuration/diagram assets in source distributions. Saved benchmark results, traces and model behavior are preserved.
+
 - Keep `show_all()` notebook output focused on the formatted report; suppress the duplicate raw return-value dictionary while preserving programmatic access to report paths and analysis.
 
 - Download Cora, CiteSeer and PubMed directly from the upstream raw-content host to avoid GitHub response-header size errors, preserving PyG processing and splits.

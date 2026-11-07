@@ -171,8 +171,7 @@ process memory, not incremental profiler overhead or CPU utilization.
   instrumentation path, not large-graph feasibility. No architecture, dimension,
   graph fraction or attention backend is silently changed to avoid OOM.
 
-See [design and confirmed timing gaps](execution_analysis_design.md) and
-[validation evidence](execution_analysis_validation.md).
+See [validation evidence](execution_analysis_validation.md).
 
 ### Refresh existing dashboards without training
 
@@ -206,3 +205,25 @@ Kernels tab retains the selected captured trace when a training epoch was not
 profiled and explicitly labels the displayed capture's epoch. Empty previews
 are not evidence of failed CUDA capture; load the full Chrome trace to inspect
 all events. If no trace was recorded, the tab shows capture diagnostics instead.
+
+
+## Measurement contract
+
+Events use process-local monotonic nanoseconds, a clock-domain identifier,
+separate UTC timestamps, UUID identities and start/end append-only JSONL records.
+Incomplete started spans remain incomplete after a crash, with unknown duration.
+Parent subprocess lifetime is measured independently even without child output.
+Different process clock domains are never silently aligned by wall timestamps.
+Child breakdowns are shown separately, with startup/unobserved remainder;
+inclusive parent and child durations are not summed.
+
+Legacy scalar metrics retain their definitions. New execution schema version 1
+contains exclusive phase accounting, partial failure evidence and explicit
+unattributed time. Detailed runs carry a separate instrumentation identity and
+must not mix with standard timings. Profiling never changes models, seeds,
+splits, validation selection or epoch budgets.
+
+GPU traces and CUDA-event intervals require actual local CUDA validation.
+Hardware counters (occupancy/SM/warp/bandwidth) are unavailable unless an external
+tool actually records them. Optional Nsight integration will be described as
+unsupported where a reliable parser or tool is unavailable.

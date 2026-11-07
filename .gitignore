@@ -8,17 +8,11 @@ __pycache__/
 .ruff_cache/
 external/
 environments/**/.venv/
-experiments/exchange/
 data/
-experiments/raw/
-experiments/checkpoints/
-experiments/configs/
-experiments/logs/
 
 .package-test/
 build/
 dist/
-*.egg-info/
 # Local data, environments, generated artifacts and personal notebooks
 /environments/
 /experiments/

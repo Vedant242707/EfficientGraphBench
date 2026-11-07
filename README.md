@@ -133,7 +133,7 @@ python -m pytest -q
 python -m build
 ```
 
-See [docs/getting_started.md](docs/getting_started.md), [docs/architecture.md](docs/architecture.md), and [CHANGELOG.md](CHANGELOG.md).
+See [docs/getting_started.md](docs/getting_started.md), [architecture and workflow](docs/ARCHITECTURE_AND_WORKFLOW.md), and [CHANGELOG.md](CHANGELOG.md).
 
 Generated results, personal notebooks, datasets and development notes are excluded from this source repository. Run the documented commands to generate results on your own machine.
 
